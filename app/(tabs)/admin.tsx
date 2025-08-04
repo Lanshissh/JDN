@@ -21,7 +21,6 @@ export default function AdminScreen() {
   const router = useRouter();
 
   const handleLogout = () => {
-    // Add clearing of tokens/context here if needed
     router.replace('/(auth)/login');
   };
 

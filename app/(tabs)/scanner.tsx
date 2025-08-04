@@ -27,7 +27,6 @@ export default function ScannerScreen() {
     setTimeout(() => setScanned(false), 3000);
   };
 
-  // 🔁 Reset scanner when the screen is focused
   useFocusEffect(
     React.useCallback(() => {
       setScannerKey(prev => prev + 1);
@@ -42,7 +41,6 @@ export default function ScannerScreen() {
         permissionScreen={{}}
       />
 
-      {/* 🔷 Logo positioned between top buttons */}
       <View style={styles.logoContainer}>
         <Image
           source={require('../../assets/images/logo.png')}

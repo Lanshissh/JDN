@@ -5,7 +5,6 @@ interface AuthContextType {
   isLoggedIn: boolean;
   loading: boolean;
   logout: () => Promise<void>;
-  // Optionally, add token if you want to use it in requests
   token: string | null;
 }
 

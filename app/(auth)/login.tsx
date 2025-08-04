@@ -1,16 +1,6 @@
 import React, { useState } from 'react';
 import { router } from 'expo-router';
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-} from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -34,10 +24,8 @@ export default function LoginScreen() {
       const { token } = res.data;
       await AsyncStorage.setItem('token', token);
 
-      // Navigate to the admin tab after successful login
       router.replace('/(tabs)/admin');
     } catch (err: any) {
-      // Log detailed error in Metro/Expo console
       console.log('[LOGIN ERROR]', err, err?.response?.data);
 
       if (err.response?.data?.error) {

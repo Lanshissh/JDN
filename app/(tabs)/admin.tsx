@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Modal } from 'react-native';
+import {
+  Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View, ActivityIndicator, Modal, Platform
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import * as FileSystem from 'expo-file-system';
@@ -91,7 +94,7 @@ export default function AdminScreen() {
     if (showManageAccounts) fetchUsers();
   }, [showManageAccounts]);
 
-  // Filter logic (client-side, you can do server-side search if needed)
+  // Filter logic
   const filteredUsers = users.filter((user) => {
     const val = filter.trim().toLowerCase();
     if (!val) return true;
@@ -139,10 +142,6 @@ export default function AdminScreen() {
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Could not create user');
     }
-  };
-
-  const handleLogout = () => {
-    router.replace('/(auth)/login');
   };
 
   // Delete user from API and refresh list
@@ -222,14 +221,25 @@ export default function AdminScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.headerRow}>
-        <Image source={require('../../assets/images/logo.png')} style={styles.headerLogo} resizeMode="contain" />
+    {/* Mobile: logo centered, heading left-aligned */}
+    {Platform.OS !== 'web' && (
+      <>
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
         <Text style={styles.heading}>Admin Dashboard</Text>
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={24} color="#dc3545" />
-        </TouchableOpacity>
+      </>
+    )}
+    {/* Web: heading only, left-aligned */}
+    {Platform.OS === 'web' && (
+      <View style={styles.headerRow}>
+        <Text style={styles.heading}>Admin Dashboard</Text>
       </View>
-
+    )}
       {/* QR Generator */}
       <Pressable style={styles.dropdownHeader} onPress={() => setShowQR(!showQR)}>
         <Text style={styles.dropdownTitle}>QR Code Generator</Text>
@@ -464,32 +474,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flexGrow: 1,
   },
+  logoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    marginTop: 6,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 2,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-  headerLogo: {
-    width: 80,
-    height: 80,
-    marginRight: 10,
-  },
   heading: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: 'bold',
-  },
-  logoutBtn: {
-    marginLeft: 'auto',
-    padding: 8,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
+    color: '#333',
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    marginLeft: 6,
   },
   dropdownHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#e6e6e6',
+    backgroundColor: '#e6e6e6ff',
     padding: 12,
     borderRadius: 8,
     marginTop: 10,

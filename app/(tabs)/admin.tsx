@@ -272,7 +272,7 @@ export default function AdminScreen() {
         <View style={styles.dropdownContent}>
           <TextInput
             style={styles.input}
-            placeholder="Username"
+            placeholder="User Full Name"
             value={newUsername}
             onChangeText={setNewUsername}
           />

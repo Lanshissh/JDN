@@ -15,30 +15,21 @@ const API_USERS_URL = 'http://192.168.200.111:3000/users';
 const API_BUILDINGS_URL = 'http://192.168.200.111:3000/buildings';
 
 export default function AdminScreen() {
-  // Account fields
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'employee'>('employee');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
-
-  // UI
   const [showQR, setShowQR] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showManageAccounts, setShowManageAccounts] = useState(false);
-
-  // Data
   const [buildingList, setBuildingList] = useState<{ building_id: string; building_name: string }[]>([]);
   const [buildingsLoading, setBuildingsLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [filter, setFilter] = useState('');
-
-  // QR generator
   const [text, setText] = useState('');
   const [generated, setGenerated] = useState('');
   const qrRef = useRef<any>(null);
-
-  // Edit modal
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
   const [editName, setEditName] = useState('');

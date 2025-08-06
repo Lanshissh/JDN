@@ -11,6 +11,15 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+type Building = {
+  building_id: string;
+  building_name: string;
+  rate_id: string;
+  last_updated?: string;
+  updated_by?: string;
+};
+type AdminSection = 'qr' | 'create' | 'manage' | 'rate' | 'buildings' | null;
+
 // --- Type for utility rate fields ---
 type AddRateFields = {
   erate_perKwH: string;
@@ -47,13 +56,13 @@ export default function AdminScreen() {
   const [editRole, setEditRole] = useState<'admin' | 'employee'>('employee');
   const [editBuilding, setEditBuilding] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'qr' | 'create' | 'manage' | 'rate' | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminSection>(null);
   const SCREEN_WIDTH = Dimensions.get('window').width;
-const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
+  const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
 
   // Hamburger menu state for mobile
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [mobileSection, setMobileSection] = useState<'qr' | 'create' | 'manage' | 'rate' | null>(null);
+  const [mobileSection, setMobileSection] = useState<AdminSection>(null);
 
   // Utility Rate states
   const [rates, setRates] = useState<any[]>([]);
@@ -95,7 +104,19 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
     }).start(() => setShowMobileMenu(false));
   };
 
-  // Fetch buildings on mount
+  // Add below your other states
+  const [buildingListFull, setBuildingListFull] = useState<Building[]>([]);
+  const [buildingsLoadingFull, setBuildingsLoadingFull] = useState(false);
+
+  const [showBuildingModal, setShowBuildingModal] = useState(false);
+  const [editingBuilding, setEditingBuilding] = useState<Building | null>(null);
+
+  const [buildingFields, setBuildingFields] = useState({
+    building_name: '',
+    rate_id: '',
+  });
+
+  // Fetch simple building list for user creation picker
   useEffect(() => {
     const fetchBuildings = async () => {
       try {
@@ -119,6 +140,22 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
     };
     fetchBuildings();
   }, []);
+  // --- Fetch full buildings for CRUD section ---
+  const fetchBuildingsFull = async () => {
+    setBuildingsLoadingFull(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(API_BUILDINGS_URL, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setBuildingListFull(res.ok ? data : []);
+    } catch (err) {
+      setBuildingListFull([]);
+    }
+    setBuildingsLoadingFull(false);
+  };
+  useEffect(() => { fetchBuildingsFull(); }, []);
 
   // Fetch users
   const fetchUsers = async () => {
@@ -376,6 +413,106 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
     });
   };
 
+  // Add CRUD handlers for Building
+  const openAddBuildingModal = () => {
+    setEditingBuilding(null);
+    setBuildingFields({ building_name: '', rate_id: '' });
+    setShowBuildingModal(true);
+  };
+  const openEditBuildingModal = (bldg: Building) => {
+    setEditingBuilding(bldg);
+    setBuildingFields({
+      building_name: bldg.building_name,
+      rate_id: bldg.rate_id,
+    });
+    setShowBuildingModal(true);
+  };
+  const closeBuildingModal = () => {
+    setShowBuildingModal(false);
+    setEditingBuilding(null);
+    setBuildingFields({ building_name: '', rate_id: '' });
+  };
+
+  const handleSaveBuilding = async () => {
+    if (!buildingFields.building_name || !buildingFields.rate_id) {
+      Alert.alert('Required', 'All fields are required.');
+      return;
+    }
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (editingBuilding) {
+        // UPDATE
+        const res = await fetch(`${API_BUILDINGS_URL}/${editingBuilding.building_id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            building_name: buildingFields.building_name,
+            rate_id: buildingFields.rate_id,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          Alert.alert('Updated', 'Building updated.');
+          closeBuildingModal();
+          fetchBuildingsFull();
+        } else {
+          Alert.alert('Error', data?.error || 'Server error');
+        }
+      } else {
+        // CREATE
+        const res = await fetch(API_BUILDINGS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            building_name: buildingFields.building_name,
+            rate_id: buildingFields.rate_id,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          Alert.alert('Created', 'Building created.');
+          closeBuildingModal();
+          fetchBuildingsFull();
+        } else {
+          Alert.alert('Error', data?.error || 'Server error');
+        }
+      }
+    } catch {
+      Alert.alert('Error', 'Network or server error');
+    }
+  };
+
+  const handleDeleteBuilding = (building_id: string) => {
+    Alert.alert('Delete Building', `Delete building ${building_id}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            const token = await AsyncStorage.getItem('token');
+            const res = await fetch(`${API_BUILDINGS_URL}/${building_id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+              Alert.alert('Deleted', data.message || 'Building deleted.');
+              fetchBuildingsFull();
+            } else {
+              Alert.alert('Error', data?.error || 'Server error');
+            }
+          } catch {
+            Alert.alert('Error', 'Network or server error');
+          }
+        }
+      }
+    ]);
+  };
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* MOBILE HEADER WITH HAMBURGER NAV */}
@@ -392,23 +529,14 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
           </TouchableOpacity>
         </View>
       )}
-      <Modal
-        visible={showMobileMenu}
-        transparent
-        animationType="none"
-        onRequestClose={closeDrawer}
-      >
+      
+     {/* --- MOBILE DRAWER --- */}
+      <Modal visible={showMobileMenu} transparent animationType="none" onRequestClose={closeDrawer}>
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          {/* LEFT drawer: FIRST */}
           <Animated.View style={{
-            width: '75%',
-            maxWidth: 340,
-            height: '100%',
-            backgroundColor: '#fff',
-            paddingHorizontal: 22,
-            paddingTop: 38,
-            justifyContent: 'flex-start',
-            transform: [{ translateX: drawerAnim }],
+            width: '75%', maxWidth: 340, height: '100%',
+            backgroundColor: '#fff', paddingHorizontal: 22, paddingTop: 38,
+            justifyContent: 'flex-start', transform: [{ translateX: drawerAnim }],
           }}>
             <Text style={{ fontWeight: 'bold', fontSize: 22, marginBottom: 30, marginLeft: 4 }}>Admin Menu</Text>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('qr'); closeDrawer(); }}>
@@ -427,8 +555,11 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
               <Ionicons name="calculator-outline" size={24} style={styles.menuIcon} />
               <Text style={styles.menuText}>Utility Rate</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('buildings'); closeDrawer(); }}>
+              <Ionicons name="business-outline" size={24} style={styles.menuIcon} />
+              <Text style={styles.menuText}>Buildings</Text>
+            </TouchableOpacity>
           </Animated.View>
-          {/* Backdrop: SECOND */}
           <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }} activeOpacity={1} onPress={closeDrawer} />
         </View>
       </Modal>
@@ -852,9 +983,112 @@ const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
                 Utility Rate
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.webNavItem, activeTab === 'buildings' && styles.webNavItemActive]}
+              onPress={() => setActiveTab(activeTab === 'buildings' ? null : 'buildings')}
+            >
+              <Ionicons name="business-outline" size={22} style={[
+                styles.webNavIcon,
+                activeTab === 'buildings' && styles.webNavItemActiveIcon
+              ]}/>
+              <Text style={[
+                styles.webNavLabel,
+                activeTab === 'buildings' && styles.webNavItemActiveLabel
+              ]}>Buildings</Text>
+            </TouchableOpacity>
           </View>
         </>
       )}
+
+      {/* --- BUILDING LIST SECTION --- */}
+      {(Platform.OS === 'web' ? activeTab : mobileSection) === 'buildings' && (
+        <View style={styles.dropdownContent}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold' }}>Building List</Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: '#007bff', paddingVertical: 8, paddingHorizontal: 16 }]}
+              onPress={openAddBuildingModal}>
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 6, fontWeight: 'bold', fontSize: 15 }}>Add Building</Text>
+            </TouchableOpacity>
+          </View>
+          {buildingsLoadingFull ? (
+            <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
+          ) : buildingListFull.length === 0 ? (
+            <Text style={styles.placeholder}>No buildings found.</Text>
+          ) : (
+            buildingListFull.map(bldg => (
+              <View key={bldg.building_id} style={styles.userRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: 'bold' }}>{bldg.building_id} - {bldg.building_name}</Text>
+                  <Text>Rate ID: {bldg.rate_id}</Text>
+                  <Text>Last updated: {bldg.last_updated} by {bldg.updated_by}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <TouchableOpacity onPress={() => openEditBuildingModal(bldg)}>
+                    <Ionicons name="pencil-outline" size={22} color="#007bff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeleteBuilding(bldg.building_id)}>
+                    <Ionicons name="trash-outline" size={22} color="red" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* Modal for Add/Edit */}
+          <Modal
+            visible={showBuildingModal}
+            animationType="slide"
+            transparent
+            onRequestClose={closeBuildingModal}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 10 }}>
+                  {editingBuilding ? 'Edit Building' : 'Add Building'}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Building Name"
+                  value={buildingFields.building_name}
+                  onChangeText={v => setBuildingFields(f => ({ ...f, building_name: v }))}
+                />
+                {/* Rate ID Picker from your actual rates */}
+                <View style={{
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  marginBottom: 10,
+                  overflow: 'hidden',
+                  backgroundColor: '#fff'
+                }}>
+                  <Picker
+                    selectedValue={buildingFields.rate_id}
+                    onValueChange={v => setBuildingFields(f => ({ ...f, rate_id: v }))}
+                    style={{ height: 50, width: '100%' }}
+                  >
+                    <Picker.Item label="Select Utility Rate..." value="" />
+                    {rates.map(r => (
+                      <Picker.Item key={r.rate_id} label={`#${r.rate_id} (E: ${r.erate_perKwH}, W: ${r.wrate_perCbM})`} value={r.rate_id} />
+                    ))}
+                  </Picker>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: '#007bff' }]}
+                    onPress={handleSaveBuilding}>
+                    <Text style={styles.buttonText}>{editingBuilding ? 'Save' : 'Add'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: '#ccc' }]}
+                    onPress={closeBuildingModal}>
+                    <Text style={[styles.buttonText, { color: '#333' }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      )}
+
       {Platform.OS === 'web' && activeTab === 'qr' && (
         <View style={styles.dropdownContent}>
           <TextInput

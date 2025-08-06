@@ -11,8 +11,22 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_USERS_URL = 'http://192.168.200.111:3000/users';
-const API_BUILDINGS_URL = 'http://192.168.200.111:3000/buildings';
+// --- Type for utility rate fields ---
+type AddRateFields = {
+  erate_perKwH: string;
+  e_vat: string;
+  emin_con: string;
+  wmin_con: string;
+  wrate_perCbM: string;
+  wnet_vat: string;
+  w_vat: string;
+  l_rate: string;
+  [key: string]: string;
+};
+
+const API_USERS_URL = 'http://192.168.200.109:3000/users';
+const API_BUILDINGS_URL = 'http://192.168.200.109:3000/buildings';
+const API_RATES_URL = 'http://192.168.200.109:3000/rates';
 
 export default function AdminScreen() {
   const [newUsername, setNewUsername] = useState('');
@@ -36,8 +50,31 @@ export default function AdminScreen() {
   const [editRole, setEditRole] = useState<'admin' | 'employee'>('employee');
   const [editBuilding, setEditBuilding] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [activeTab, setActiveTab] = useState<'qr' | 'create' | 'manage' | 'rate' | null>(null);
+
+  // Utility Rate states
+  const [rates, setRates] = useState<any[]>([]);
+  const [rateLoading, setRateLoading] = useState(false);
+  const [showAddRate, setShowAddRate] = useState(false);
+  const [addRateFields, setAddRateFields] = useState<AddRateFields>({
+    erate_perKwH: '', e_vat: '', emin_con: '',
+    wmin_con: '', wrate_perCbM: '', wnet_vat: '', w_vat: '', l_rate: ''
+  });
+
+  // For editing rates
+  const [editRateModal, setEditRateModal] = useState(false);
+  const [editRateFields, setEditRateFields] = useState<AddRateFields>({
+    erate_perKwH: '', e_vat: '', emin_con: '',
+    wmin_con: '', wrate_perCbM: '', wnet_vat: '', w_vat: '', l_rate: ''
+  });
+  const [editingRateId, setEditingRateId] = useState<string | null>(null);
 
   const router = useRouter();
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('token');
+    router.replace('/login');
+  };
 
   // Fetch buildings on mount
   useEffect(() => {
@@ -64,7 +101,7 @@ export default function AdminScreen() {
     fetchBuildings();
   }, []);
 
-  // Fetch users whenever manage accounts section is opened
+  // Fetch users whenever manage accounts section is opened (for web, use activeTab)
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
@@ -82,10 +119,112 @@ export default function AdminScreen() {
   };
 
   useEffect(() => {
-    if (showManageAccounts) fetchUsers();
-  }, [showManageAccounts]);
+    if (showManageAccounts || (Platform.OS === 'web' && activeTab === 'manage')) fetchUsers();
+  }, [showManageAccounts, activeTab]);
 
-  // Filter logic
+  // --- Fetch utility rates ---
+  useEffect(() => {
+    if (Platform.OS === 'web' && activeTab === 'rate') {
+      fetchRates();
+    }
+  }, [activeTab]);
+
+  const fetchRates = async () => {
+    setRateLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(API_RATES_URL, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setRates(res.ok ? data : []);
+    } catch {
+      setRates([]);
+    }
+    setRateLoading(false);
+  };
+
+  // Edit Utility Rate Modal Logic
+  const openEditRateModal = (rate: any) => {
+    setEditingRateId(rate.rate_id);
+    setEditRateFields({
+      erate_perKwH: String(rate.erate_perKwH ?? ''),
+      e_vat: String(rate.e_vat ?? ''),
+      emin_con: String(rate.emin_con ?? ''),
+      wmin_con: String(rate.wmin_con ?? ''),
+      wrate_perCbM: String(rate.wrate_perCbM ?? ''),
+      wnet_vat: String(rate.wnet_vat ?? ''),
+      w_vat: String(rate.w_vat ?? ''),
+      l_rate: String(rate.l_rate ?? '')
+    });
+    setEditRateModal(true);
+  };
+
+  const handleEditRate = async () => {
+    if (!editingRateId) return;
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${API_RATES_URL}/${editingRateId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...editRateFields,
+          erate_perKwH: parseFloat(editRateFields.erate_perKwH),
+          e_vat: parseFloat(editRateFields.e_vat),
+          emin_con: parseFloat(editRateFields.emin_con),
+          wmin_con: parseFloat(editRateFields.wmin_con),
+          wrate_perCbM: parseFloat(editRateFields.wrate_perCbM),
+          wnet_vat: parseFloat(editRateFields.wnet_vat),
+          w_vat: parseFloat(editRateFields.w_vat),
+          l_rate: parseFloat(editRateFields.l_rate),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Alert.alert('Success', data.message || 'Rate updated.');
+        setEditRateModal(false);
+        fetchRates();
+      } else {
+        Alert.alert('Error', data?.error || 'Server error');
+      }
+    } catch {
+      Alert.alert('Error', 'Network or server error');
+    }
+  };
+
+  const handleDeleteRate = (rate_id: string) => {
+    const doDelete = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const res = await fetch(`${API_RATES_URL}/${rate_id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          Alert.alert('Deleted', data.message || 'Rate deleted.');
+          fetchRates();
+        } else {
+          Alert.alert('Error', data?.error || 'Server error');
+        }
+      } catch {
+        Alert.alert('Error', 'Network or server error');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Are you sure you want to delete rate ${rate_id}?`)) doDelete();
+    } else {
+      Alert.alert('Delete Rate', `Are you sure you want to delete rate ${rate_id}?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete }
+      ]);
+    }
+  };
+
   const filteredUsers = users.filter((user) => {
     const val = filter.trim().toLowerCase();
     if (!val) return true;
@@ -129,7 +268,7 @@ export default function AdminScreen() {
       setNewUsername('');
       setNewPassword('');
       setSelectedBuildingId(buildingList[0]?.building_id || '');
-      if (showManageAccounts) fetchUsers();
+      if (showManageAccounts || (Platform.OS === 'web' && activeTab === 'manage')) fetchUsers();
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Could not create user');
     }
@@ -212,31 +351,131 @@ export default function AdminScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-    {/* Mobile: logo centered, heading left-aligned */}
-    {Platform.OS !== 'web' && (
-      <>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/images/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+      {/* MOBILE HEADER */}
+      {Platform.OS !== 'web' && (
+        <View style={styles.headerMobile}>
+          <View style={styles.logoCenterContainer}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+          <TouchableOpacity style={styles.logoutIconBtn} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={28} color="#d9534f" />
+          </TouchableOpacity>
         </View>
-        <Text style={styles.heading}>Admin Dashboard</Text>
-      </>
-    )}
-    {/* Web: heading only, left-aligned */}
-    {Platform.OS === 'web' && (
-      <View style={styles.headerRow}>
-        <Text style={styles.heading}>Admin Dashboard</Text>
-      </View>
-    )}
-      {/* QR Generator */}
-      <Pressable style={styles.dropdownHeader} onPress={() => setShowQR(!showQR)}>
-        <Text style={styles.dropdownTitle}>QR Code Generator</Text>
-        <Ionicons name={showQR ? 'chevron-up' : 'chevron-down'} size={20} />
-      </Pressable>
-      {showQR && (
+      )}
+
+      {/* WEB HEADER AND NAV */}
+      {Platform.OS === 'web' && (
+        <>
+          <View style={styles.headerRow}>
+            <Text style={styles.heading}>Admin Dashboard</Text>
+          </View>
+          <View style={styles.webNavBar}>
+            <TouchableOpacity
+              style={[
+                styles.webNavItem,
+                activeTab === 'qr' && styles.webNavItemActive,
+              ]}
+              onPress={() => setActiveTab(activeTab === 'qr' ? null : 'qr')}
+            >
+              <Ionicons
+                name="qr-code-outline"
+                size={22}
+                style={[
+                  styles.webNavIcon,
+                  activeTab === 'qr' && styles.webNavItemActiveIcon
+                ]}
+              />
+              <Text
+                style={[
+                  styles.webNavLabel,
+                  activeTab === 'qr' && styles.webNavItemActiveLabel
+                ]}
+              >
+                QR Code
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.webNavItem,
+                activeTab === 'create' && styles.webNavItemActive,
+              ]}
+              onPress={() => setActiveTab(activeTab === 'create' ? null : 'create')}
+            >
+              <Ionicons
+                name="person-add-outline"
+                size={22}
+                style={[
+                  styles.webNavIcon,
+                  activeTab === 'create' && styles.webNavItemActiveIcon
+                ]}
+              />
+              <Text
+                style={[
+                  styles.webNavLabel,
+                  activeTab === 'create' && styles.webNavItemActiveLabel
+                ]}
+              >
+                Create Account
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.webNavItem,
+                activeTab === 'manage' && styles.webNavItemActive,
+              ]}
+              onPress={() => setActiveTab(activeTab === 'manage' ? null : 'manage')}
+            >
+              <Ionicons
+                name="people-outline"
+                size={22}
+                style={[
+                  styles.webNavIcon,
+                  activeTab === 'manage' && styles.webNavItemActiveIcon
+                ]}
+              />
+              <Text
+                style={[
+                  styles.webNavLabel,
+                  activeTab === 'manage' && styles.webNavItemActiveLabel
+                ]}
+              >
+                Manage Accounts
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.webNavItem,
+                activeTab === 'rate' && styles.webNavItemActive,
+              ]}
+              onPress={() => setActiveTab(activeTab === 'rate' ? null : 'rate')}
+            >
+              <Ionicons
+                name="calculator-outline"
+                size={22}
+                style={[
+                  styles.webNavIcon,
+                  activeTab === 'rate' && styles.webNavItemActiveIcon
+                ]}
+              />
+              <Text
+                style={[
+                  styles.webNavLabel,
+                  activeTab === 'rate' && styles.webNavItemActiveLabel
+                ]}
+              >
+                Utility Rate
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* WEB: SHOW CONTENT BASED ON ACTIVE TAB */}
+      {Platform.OS === 'web' && activeTab === 'qr' && (
         <View style={styles.dropdownContent}>
           <TextInput
             style={styles.input}
@@ -263,12 +502,7 @@ export default function AdminScreen() {
         </View>
       )}
 
-      {/* Create Account */}
-      <Pressable style={styles.dropdownHeader} onPress={() => setShowAccount(!showAccount)}>
-        <Text style={styles.dropdownTitle}>Create New Account</Text>
-        <Ionicons name={showAccount ? 'chevron-up' : 'chevron-down'} size={20} />
-      </Pressable>
-      {showAccount && (
+      {Platform.OS === 'web' && activeTab === 'create' && (
         <View style={styles.dropdownContent}>
           <TextInput
             style={styles.input}
@@ -338,14 +572,8 @@ export default function AdminScreen() {
         </View>
       )}
 
-      {/* Manage Accounts */}
-      <Pressable style={styles.dropdownHeader} onPress={() => setShowManageAccounts(!showManageAccounts)}>
-        <Text style={styles.dropdownTitle}>Manage Accounts</Text>
-        <Ionicons name={showManageAccounts ? 'chevron-up' : 'chevron-down'} size={20} />
-      </Pressable>
-      {showManageAccounts && (
+      {Platform.OS === 'web' && activeTab === 'manage' && (
         <View style={styles.dropdownContent}>
-          {/* Filter/search bar */}
           <TextInput
             style={styles.input}
             placeholder="Search user_id, name, role, building"
@@ -377,6 +605,327 @@ export default function AdminScreen() {
             ))
           )}
         </View>
+      )}
+
+      {/* --- UTILITY RATE TAB WEB ONLY --- */}
+      {Platform.OS === 'web' && activeTab === 'rate' && (
+        <View style={styles.dropdownContent}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>Utility Rates</Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#007bff', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', alignItems: 'center'
+              }}
+              onPress={() => setShowAddRate(!showAddRate)}
+            >
+              <Ionicons name={showAddRate ? "close" : "add-circle-outline"} size={20} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 6, fontWeight: 'bold', fontSize: 15 }}>
+                {showAddRate ? "Cancel" : "Add Rate"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {/* Add Rate Form */}
+          {showAddRate && (
+            <View style={{ marginBottom: 12 }}>
+              {[
+                { key: 'erate_perKwH', label: 'Electric Rate (per kWh)' },
+                { key: 'e_vat', label: 'Electric VAT' },
+                { key: 'emin_con', label: 'Electric Min Consumption' },
+                { key: 'wmin_con', label: 'Water Min Consumption' },
+                { key: 'wrate_perCbM', label: 'Water Rate (per m³)' },
+                { key: 'wnet_vat', label: 'Water Net VAT' },
+                { key: 'w_vat', label: 'Water VAT' },
+                { key: 'l_rate', label: 'LPG Rate' },
+              ].map((f) => (
+                <TextInput
+                  key={f.key}
+                  style={styles.input}
+                  placeholder={f.label}
+                  value={addRateFields[f.key]}
+                  keyboardType="numeric"
+                  onChangeText={v => setAddRateFields(r => ({ ...r, [f.key]: v }))}
+                />
+              ))}
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: '#007bff' }]}
+                onPress={async () => {
+                  for (let k in addRateFields) {
+                    if (!addRateFields[k]) {
+                      Alert.alert('Required', 'All fields are required.');
+                      return;
+                    }
+                  }
+                  try {
+                    const token = await AsyncStorage.getItem('token');
+                    const res = await fetch(API_RATES_URL, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        ...addRateFields,
+                        erate_perKwH: parseFloat(addRateFields.erate_perKwH),
+                        e_vat: parseFloat(addRateFields.e_vat),
+                        emin_con: parseFloat(addRateFields.emin_con),
+                        wmin_con: parseFloat(addRateFields.wmin_con),
+                        wrate_perCbM: parseFloat(addRateFields.wrate_perCbM),
+                        wnet_vat: parseFloat(addRateFields.wnet_vat),
+                        w_vat: parseFloat(addRateFields.w_vat),
+                        l_rate: parseFloat(addRateFields.l_rate),
+                      }),
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      Alert.alert('Success', 'Rate added.');
+                      setAddRateFields({
+                        erate_perKwH: '', e_vat: '', emin_con: '',
+                        wmin_con: '', wrate_perCbM: '', wnet_vat: '', w_vat: '', l_rate: ''
+                      });
+                      setShowAddRate(false);
+                      fetchRates();
+                    } else {
+                      Alert.alert('Error', data?.error || 'Server error');
+                    }
+                  } catch {
+                    Alert.alert('Error', 'Network or server error');
+                  }
+                }}
+              >
+                <Text style={styles.buttonText}>Add Rate</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {/* Rate List with Edit/Delete */}
+          {rateLoading ? (
+            <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
+          ) : rates.length === 0 ? (
+            <Text style={styles.placeholder}>No utility rates found.</Text>
+          ) : (
+            <View>
+              {rates.map((rate) => (
+                <View key={rate.rate_id} style={{
+                  padding: 10, borderBottomColor: '#ccc', borderBottomWidth: 1,
+                  flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <View>
+                    <Text style={{ fontWeight: 'bold' }}>ID: {rate.rate_id}</Text>
+                    <Text>Electric: {rate.erate_perKwH} / VAT: {rate.e_vat} / Min: {rate.emin_con}</Text>
+                    <Text>Water: {rate.wrate_perCbM} / VAT: {rate.w_vat} / Net VAT: {rate.wnet_vat} / Min: {rate.wmin_con}</Text>
+                    <Text>LPG: {rate.l_rate}</Text>
+                    <Text style={{ fontSize: 12, color: '#888' }}>
+                      Updated {rate.last_updated} by {rate.updated_by}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => openEditRateModal(rate)}>
+                      <Ionicons name="pencil-outline" size={22} color="#007bff" style={{ marginRight: 10 }} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteRate(rate.rate_id)}>
+                      <Ionicons name="trash-outline" size={22} color="red" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* --- Edit Rate Modal --- */}
+          <Modal
+            visible={editRateModal}
+            animationType="slide"
+            transparent
+            onRequestClose={() => setEditRateModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 10 }}>Edit Utility Rate</Text>
+                {[
+                  { key: 'erate_perKwH', label: 'Electric Rate (per kWh)' },
+                  { key: 'e_vat', label: 'Electric VAT' },
+                  { key: 'emin_con', label: 'Electric Min Consumption' },
+                  { key: 'wmin_con', label: 'Water Min Consumption' },
+                  { key: 'wrate_perCbM', label: 'Water Rate (per m³)' },
+                  { key: 'wnet_vat', label: 'Water Net VAT' },
+                  { key: 'w_vat', label: 'Water VAT' },
+                  { key: 'l_rate', label: 'LPG Rate' },
+                ].map((f) => (
+                  <TextInput
+                    key={f.key}
+                    style={styles.input}
+                    placeholder={f.label}
+                    value={editRateFields[f.key]}
+                    keyboardType="numeric"
+                    onChangeText={v => setEditRateFields(r => ({ ...r, [f.key]: v }))}
+                  />
+                ))}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={[styles.button, { flex: 1, backgroundColor: '#007bff' }]}
+                    onPress={handleEditRate}
+                  >
+                    <Text style={styles.buttonText}>Save</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, { flex: 1, backgroundColor: '#ccc' }]}
+                    onPress={() => setEditRateModal(false)}
+                  >
+                    <Text style={[styles.buttonText, { color: '#333' }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      )}
+
+      {/* MOBILE: KEEP COLLAPSIBLE DROPDOWNS */}
+      {Platform.OS !== 'web' && (
+        <>
+          <Pressable style={styles.dropdownHeader} onPress={() => setShowQR(!showQR)}>
+            <Text style={styles.dropdownTitle}>QR Code Generator</Text>
+            <Ionicons name={showQR ? 'chevron-up' : 'chevron-down'} size={20} />
+          </Pressable>
+          {showQR && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Text for QR"
+                value={text}
+                onChangeText={val => {
+                  setText(val);
+                  setGenerated(val);
+                }}
+              />
+              <View style={styles.qrContainer}>
+                {generated ? (
+                  <>
+                    <QRCode value={generated} size={200} getRef={c => (qrRef.current = c)} />
+                    <TouchableOpacity style={styles.downloadBtn} onPress={handleDownloadQR}>
+                      <Ionicons name="download-outline" size={20} color="#fff" />
+                      <Text style={styles.downloadBtnText}>Download QR</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.placeholder}>QR Preview</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          <Pressable style={styles.dropdownHeader} onPress={() => setShowAccount(!showAccount)}>
+            <Text style={styles.dropdownTitle}>Create New Account</Text>
+            <Ionicons name={showAccount ? 'chevron-up' : 'chevron-down'} size={20} />
+          </Pressable>
+          {showAccount && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="User Full Name"
+                value={newUsername}
+                onChangeText={setNewUsername}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+              />
+              {/* Role dropdown */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Role:</Text>
+                <View style={{
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  backgroundColor: '#fff'
+                }}>
+                  <Picker
+                    selectedValue={newRole}
+                    onValueChange={(itemValue) => setNewRole(itemValue as 'admin' | 'employee')}
+                    style={{ height: 50, width: '100%' }}
+                  >
+                    <Picker.Item label="Employee" value="employee" />
+                    <Picker.Item label="Admin" value="admin" />
+                  </Picker>
+                </View>
+              </View>
+              {/* Building dropdown */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Building:</Text>
+                <View style={{
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  backgroundColor: '#fff'
+                }}>
+                  {buildingsLoading ? (
+                    <Text style={{ padding: 12 }}>Loading buildings...</Text>
+                  ) : (
+                    <Picker
+                      selectedValue={selectedBuildingId}
+                      onValueChange={itemValue => setSelectedBuildingId(itemValue)}
+                      style={{ height: 50, width: '100%' }}
+                    >
+                      {buildingList.map(b => (
+                        <Picker.Item
+                          key={b.building_id}
+                          label={`${b.building_id} - ${b.building_name}`}
+                          value={b.building_id}
+                        />
+                      ))}
+                    </Picker>
+                  )}
+                </View>
+              </View>
+              <TouchableOpacity style={styles.button} onPress={handleRegister}>
+                <Text style={styles.buttonText}>Create Account</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <Pressable style={styles.dropdownHeader} onPress={() => setShowManageAccounts(!showManageAccounts)}>
+            <Text style={styles.dropdownTitle}>Manage Accounts</Text>
+            <Ionicons name={showManageAccounts ? 'chevron-up' : 'chevron-down'} size={20} />
+          </Pressable>
+          {showManageAccounts && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Search user_id, name, role, building"
+                value={filter}
+                onChangeText={setFilter}
+              />
+              {usersLoading ? (
+                <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
+              ) : filteredUsers.length === 0 ? (
+                <Text style={styles.placeholder}>No accounts found.</Text>
+              ) : (
+                filteredUsers.map(user => (
+                  <View key={user.user_id} style={styles.userRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: 'bold' }}>{user.user_id}</Text>
+                      <Text>Name: {user.user_fullname}</Text>
+                      <Text>Role: {user.user_level}</Text>
+                      <Text>Building: {user.building_id}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <TouchableOpacity onPress={() => openEditModal(user)}>
+                        <Ionicons name="pencil-outline" size={22} color="#007bff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteUser(user.user_id)}>
+                        <Ionicons name="trash-outline" size={22} color="red" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+        </>
       )}
 
       {/* Edit User Modal */}
@@ -465,16 +1014,63 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     flexGrow: 1,
   },
-  logoContainer: {
+  headerMobile: {
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  logoCenterContainer: {
+    position: 'absolute',
+    left: 0, right: 0, top: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-    marginTop: 6,
+    height: 70,
+  },
+  logoutIconBtn: {
+    position: 'absolute',
+    right: 0,
+    top: 10,
+    padding: 12,
+    zIndex: 2,
   },
   logo: {
     width: 80,
     height: 80,
-    marginBottom: 2,
+  },
+  webNavBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 6,
+    gap: 8,
+  },
+  webNavItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    marginRight: 8,
+  },
+  webNavItemActive: {
+    backgroundColor: '#007bff',
+  },
+  webNavLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 7,
+    color: '#333',
+  },
+  webNavIcon: {
+    color: '#333',
+  },
+  webNavItemActiveLabel: {
+    color: '#fff',
+  },
+  webNavItemActiveIcon: {
+    color: '#fff',
   },
   headerRow: {
     flexDirection: 'row',

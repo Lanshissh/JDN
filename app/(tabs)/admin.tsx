@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View, ActivityIndicator, Modal, Platform
+  Alert, Image, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View, ActivityIndicator, Modal, Platform, Dimensions, Animated 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
@@ -33,9 +33,6 @@ export default function AdminScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'employee'>('employee');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
-  const [showQR, setShowQR] = useState(false);
-  const [showAccount, setShowAccount] = useState(false);
-  const [showManageAccounts, setShowManageAccounts] = useState(false);
   const [buildingList, setBuildingList] = useState<{ building_id: string; building_name: string }[]>([]);
   const [buildingsLoading, setBuildingsLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -51,6 +48,12 @@ export default function AdminScreen() {
   const [editBuilding, setEditBuilding] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'qr' | 'create' | 'manage' | 'rate' | null>(null);
+  const SCREEN_WIDTH = Dimensions.get('window').width;
+const [drawerAnim] = useState(new Animated.Value(-SCREEN_WIDTH * 0.75));
+
+  // Hamburger menu state for mobile
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [mobileSection, setMobileSection] = useState<'qr' | 'create' | 'manage' | 'rate' | null>(null);
 
   // Utility Rate states
   const [rates, setRates] = useState<any[]>([]);
@@ -74,6 +77,22 @@ export default function AdminScreen() {
   const handleLogout = async () => {
     await AsyncStorage.removeItem('token');
     router.replace('/login');
+  };
+
+  const openDrawer = () => {
+    setShowMobileMenu(true);
+    Animated.timing(drawerAnim, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  };
+  const closeDrawer = () => {
+    Animated.timing(drawerAnim, {
+      toValue: -SCREEN_WIDTH * 0.75,
+      duration: 180,
+      useNativeDriver: false,
+    }).start(() => setShowMobileMenu(false));
   };
 
   // Fetch buildings on mount
@@ -101,7 +120,7 @@ export default function AdminScreen() {
     fetchBuildings();
   }, []);
 
-  // Fetch users whenever manage accounts section is opened (for web, use activeTab)
+  // Fetch users
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
@@ -119,15 +138,23 @@ export default function AdminScreen() {
   };
 
   useEffect(() => {
-    if (showManageAccounts || (Platform.OS === 'web' && activeTab === 'manage')) fetchUsers();
-  }, [showManageAccounts, activeTab]);
+    if (
+      (Platform.OS === 'web' && activeTab === 'manage') ||
+      (Platform.OS !== 'web' && mobileSection === 'manage')
+    ) {
+      fetchUsers();
+    }
+  }, [activeTab, mobileSection]);
 
   // --- Fetch utility rates ---
   useEffect(() => {
-    if (Platform.OS === 'web' && activeTab === 'rate') {
+    if (
+      (Platform.OS === 'web' && activeTab === 'rate') ||
+      (Platform.OS !== 'web' && mobileSection === 'rate')
+    ) {
       fetchRates();
     }
-  }, [activeTab]);
+  }, [activeTab, mobileSection]);
 
   const fetchRates = async () => {
     setRateLoading(true);
@@ -268,7 +295,7 @@ export default function AdminScreen() {
       setNewUsername('');
       setNewPassword('');
       setSelectedBuildingId(buildingList[0]?.building_id || '');
-      if (showManageAccounts || (Platform.OS === 'web' && activeTab === 'manage')) fetchUsers();
+      if (Platform.OS === 'web' ? activeTab === 'manage' : mobileSection === 'manage') fetchUsers();
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Could not create user');
     }
@@ -351,23 +378,378 @@ export default function AdminScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* MOBILE HEADER */}
+      {/* MOBILE HEADER WITH HAMBURGER NAV */}
       {Platform.OS !== 'web' && (
         <View style={styles.headerMobile}>
+          <TouchableOpacity style={styles.hamburgerBtn} onPress={openDrawer}>
+            <Ionicons name="menu-outline" size={32} color="#333" />
+          </TouchableOpacity>
           <View style={styles.logoCenterContainer}>
-            <Image
-              source={require('../../assets/images/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            <Image source={require('../../assets/images/logo.png')} style={styles.logo} resizeMode="contain" />
           </View>
           <TouchableOpacity style={styles.logoutIconBtn} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={28} color="#d9534f" />
           </TouchableOpacity>
         </View>
       )}
+      <Modal
+        visible={showMobileMenu}
+        transparent
+        animationType="none"
+        onRequestClose={closeDrawer}
+      >
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          {/* LEFT drawer: FIRST */}
+          <Animated.View style={{
+            width: '75%',
+            maxWidth: 340,
+            height: '100%',
+            backgroundColor: '#fff',
+            paddingHorizontal: 22,
+            paddingTop: 38,
+            justifyContent: 'flex-start',
+            transform: [{ translateX: drawerAnim }],
+          }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 22, marginBottom: 30, marginLeft: 4 }}>Admin Menu</Text>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('qr'); closeDrawer(); }}>
+              <Ionicons name="qr-code-outline" size={24} style={styles.menuIcon} />
+              <Text style={styles.menuText}>QR Code Generator</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('create'); closeDrawer(); }}>
+              <Ionicons name="person-add-outline" size={24} style={styles.menuIcon} />
+              <Text style={styles.menuText}>Create Account</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('manage'); closeDrawer(); }}>
+              <Ionicons name="people-outline" size={24} style={styles.menuIcon} />
+              <Text style={styles.menuText}>Manage Accounts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMobileSection('rate'); closeDrawer(); }}>
+              <Ionicons name="calculator-outline" size={24} style={styles.menuIcon} />
+              <Text style={styles.menuText}>Utility Rate</Text>
+            </TouchableOpacity>
+          </Animated.View>
+          {/* Backdrop: SECOND */}
+          <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }} activeOpacity={1} onPress={closeDrawer} />
+        </View>
+      </Modal>
 
-      {/* WEB HEADER AND NAV */}
+      {/* MOBILE: Feature content (one at a time, chosen from hamburger nav) */}
+      {Platform.OS !== 'web' && (
+        <>
+          {/* QR GENERATOR */}
+          {mobileSection === 'qr' && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Text for QR"
+                value={text}
+                onChangeText={val => {
+                  setText(val);
+                  setGenerated(val);
+                }}
+              />
+              <View style={styles.qrContainer}>
+                {generated ? (
+                  <>
+                    <QRCode value={generated} size={200} getRef={c => (qrRef.current = c)} />
+                    <TouchableOpacity style={styles.downloadBtn} onPress={handleDownloadQR}>
+                      <Ionicons name="download-outline" size={20} color="#fff" />
+                      <Text style={styles.downloadBtnText}>Download QR</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.placeholder}>QR Preview</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* CREATE ACCOUNT */}
+          {mobileSection === 'create' && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="User Full Name"
+                value={newUsername}
+                onChangeText={setNewUsername}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+              />
+              {/* Role dropdown */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Role:</Text>
+                <View style={{
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  backgroundColor: '#fff'
+                }}>
+                  <Picker
+                    selectedValue={newRole}
+                    onValueChange={(itemValue) => setNewRole(itemValue as 'admin' | 'employee')}
+                    style={{ height: 50, width: '100%' }}
+                  >
+                    <Picker.Item label="Employee" value="employee" />
+                    <Picker.Item label="Admin" value="admin" />
+                  </Picker>
+                </View>
+              </View>
+              {/* Building dropdown */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Building:</Text>
+                <View style={{
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  backgroundColor: '#fff'
+                }}>
+                  {buildingsLoading ? (
+                    <Text style={{ padding: 12 }}>Loading buildings...</Text>
+                  ) : (
+                    <Picker
+                      selectedValue={selectedBuildingId}
+                      onValueChange={itemValue => setSelectedBuildingId(itemValue)}
+                      style={{ height: 50, width: '100%' }}
+                    >
+                      {buildingList.map(b => (
+                        <Picker.Item
+                          key={b.building_id}
+                          label={`${b.building_id} - ${b.building_name}`}
+                          value={b.building_id}
+                        />
+                      ))}
+                    </Picker>
+                  )}
+                </View>
+              </View>
+              <TouchableOpacity style={styles.button} onPress={handleRegister}>
+                <Text style={styles.buttonText}>Create Account</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* MANAGE ACCOUNTS */}
+          {mobileSection === 'manage' && (
+            <View style={styles.dropdownContent}>
+              <TextInput
+                style={styles.input}
+                placeholder="Search user_id, name, role, building"
+                value={filter}
+                onChangeText={setFilter}
+              />
+              {usersLoading ? (
+                <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
+              ) : filteredUsers.length === 0 ? (
+                <Text style={styles.placeholder}>No accounts found.</Text>
+              ) : (
+                filteredUsers.map(user => (
+                  <View key={user.user_id} style={styles.userRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: 'bold' }}>{user.user_id}</Text>
+                      <Text>Name: {user.user_fullname}</Text>
+                      <Text>Role: {user.user_level}</Text>
+                      <Text>Building: {user.building_id}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <TouchableOpacity onPress={() => openEditModal(user)}>
+                        <Ionicons name="pencil-outline" size={22} color="#007bff" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteUser(user.user_id)}>
+                        <Ionicons name="trash-outline" size={22} color="red" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
+          {/* UTILITY RATE (Mobile) */}
+          {mobileSection === 'rate' && (
+            <View style={styles.dropdownContent}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>Utility Rates</Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#007bff',
+                    borderRadius: 8,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center'
+                  }}
+                  onPress={() => setShowAddRate(!showAddRate)}
+                >
+                  <Ionicons name={showAddRate ? "close" : "add-circle-outline"} size={20} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 6, fontWeight: 'bold', fontSize: 15 }}>
+                    {showAddRate ? "Cancel" : "Add Rate"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {/* Add Rate Form */}
+              {showAddRate && (
+                <View style={{ marginBottom: 12 }}>
+                  {[
+                    { key: 'erate_perKwH', label: 'Electric Rate (per kWh)' },
+                    { key: 'e_vat', label: 'Electric VAT' },
+                    { key: 'emin_con', label: 'Electric Min Consumption' },
+                    { key: 'wmin_con', label: 'Water Min Consumption' },
+                    { key: 'wrate_perCbM', label: 'Water Rate (per m³)' },
+                    { key: 'wnet_vat', label: 'Water Net VAT' },
+                    { key: 'w_vat', label: 'Water VAT' },
+                    { key: 'l_rate', label: 'LPG Rate' },
+                  ].map((f) => (
+                    <TextInput
+                      key={f.key}
+                      style={styles.input}
+                      placeholder={f.label}
+                      value={addRateFields[f.key]}
+                      keyboardType="numeric"
+                      onChangeText={v => setAddRateFields(r => ({ ...r, [f.key]: v }))}
+                    />
+                  ))}
+                  <TouchableOpacity
+                    style={[styles.button, { backgroundColor: '#007bff' }]}
+                    onPress={async () => {
+                      for (let k in addRateFields) {
+                        if (!addRateFields[k]) {
+                          Alert.alert('Required', 'All fields are required.');
+                          return;
+                        }
+                      }
+                      try {
+                        const token = await AsyncStorage.getItem('token');
+                        const res = await fetch(API_RATES_URL, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({
+                            ...addRateFields,
+                            erate_perKwH: parseFloat(addRateFields.erate_perKwH),
+                            e_vat: parseFloat(addRateFields.e_vat),
+                            emin_con: parseFloat(addRateFields.emin_con),
+                            wmin_con: parseFloat(addRateFields.wmin_con),
+                            wrate_perCbM: parseFloat(addRateFields.wrate_perCbM),
+                            wnet_vat: parseFloat(addRateFields.wnet_vat),
+                            w_vat: parseFloat(addRateFields.w_vat),
+                            l_rate: parseFloat(addRateFields.l_rate),
+                          }),
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                          Alert.alert('Success', 'Rate added.');
+                          setAddRateFields({
+                            erate_perKwH: '', e_vat: '', emin_con: '',
+                            wmin_con: '', wrate_perCbM: '', wnet_vat: '', w_vat: '', l_rate: ''
+                          });
+                          setShowAddRate(false);
+                          fetchRates();
+                        } else {
+                          Alert.alert('Error', data?.error || 'Server error');
+                        }
+                      } catch {
+                        Alert.alert('Error', 'Network or server error');
+                      }
+                    }}
+                  >
+                    <Text style={styles.buttonText}>Add Rate</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {/* Rate List */}
+              {rateLoading ? (
+                <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
+              ) : rates.length === 0 ? (
+                <Text style={styles.placeholder}>No utility rates found.</Text>
+              ) : (
+                <View>
+                  {rates.map((rate) => (
+                    <View key={rate.rate_id} style={{
+                      padding: 10, borderBottomColor: '#ccc', borderBottomWidth: 1,
+                      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>ID: {rate.rate_id}</Text>
+                        <Text>Electric: {rate.erate_perKwH} / VAT: {rate.e_vat} / Min: {rate.emin_con}</Text>
+                        <Text>Water: {rate.wrate_perCbM} / VAT: {rate.w_vat} / Net VAT: {rate.wnet_vat} / Min: {rate.wmin_con}</Text>
+                        <Text>LPG: {rate.l_rate}</Text>
+                        <Text style={{ fontSize: 12, color: '#888' }}>
+                          Updated {rate.last_updated} by {rate.updated_by}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TouchableOpacity onPress={() => openEditRateModal(rate)}>
+                          <Ionicons name="pencil-outline" size={22} color="#007bff" style={{ marginRight: 10 }} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteRate(rate.rate_id)}>
+                          <Ionicons name="trash-outline" size={22} color="red" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {/* Edit Rate Modal (Same as web) */}
+              <Modal
+                visible={editRateModal}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setEditRateModal(false)}
+              >
+                <View style={styles.modalOverlay}>
+                  <View style={styles.modalContainer}>
+                    <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 10 }}>Edit Utility Rate</Text>
+                    {[
+                      { key: 'erate_perKwH', label: 'Electric Rate (per kWh)' },
+                      { key: 'e_vat', label: 'Electric VAT' },
+                      { key: 'emin_con', label: 'Electric Min Consumption' },
+                      { key: 'wmin_con', label: 'Water Min Consumption' },
+                      { key: 'wrate_perCbM', label: 'Water Rate (per m³)' },
+                      { key: 'wnet_vat', label: 'Water Net VAT' },
+                      { key: 'w_vat', label: 'Water VAT' },
+                      { key: 'l_rate', label: 'LPG Rate' },
+                    ].map((f) => (
+                      <TextInput
+                        key={f.key}
+                        style={styles.input}
+                        placeholder={f.label}
+                        value={editRateFields[f.key]}
+                        keyboardType="numeric"
+                        onChangeText={v => setEditRateFields(r => ({ ...r, [f.key]: v }))}
+                      />
+                    ))}
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                      <TouchableOpacity
+                        style={[styles.button, { flex: 1, backgroundColor: '#007bff' }]}
+                        onPress={handleEditRate}
+                      >
+                        <Text style={styles.buttonText}>Save</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.button, { flex: 1, backgroundColor: '#ccc' }]}
+                        onPress={() => setEditRateModal(false)}
+                      >
+                        <Text style={[styles.buttonText, { color: '#333' }]}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* --- WEB SECTIONS AND MODALS --- */}
       {Platform.OS === 'web' && (
         <>
           <View style={styles.headerRow}>
@@ -473,8 +855,6 @@ export default function AdminScreen() {
           </View>
         </>
       )}
-
-      {/* WEB: SHOW CONTENT BASED ON ACTIVE TAB */}
       {Platform.OS === 'web' && activeTab === 'qr' && (
         <View style={styles.dropdownContent}>
           <TextInput
@@ -778,157 +1158,8 @@ export default function AdminScreen() {
           </Modal>
         </View>
       )}
-
-      {/* MOBILE: KEEP COLLAPSIBLE DROPDOWNS */}
-      {Platform.OS !== 'web' && (
-        <>
-          <Pressable style={styles.dropdownHeader} onPress={() => setShowQR(!showQR)}>
-            <Text style={styles.dropdownTitle}>QR Code Generator</Text>
-            <Ionicons name={showQR ? 'chevron-up' : 'chevron-down'} size={20} />
-          </Pressable>
-          {showQR && (
-            <View style={styles.dropdownContent}>
-              <TextInput
-                style={styles.input}
-                placeholder="Text for QR"
-                value={text}
-                onChangeText={val => {
-                  setText(val);
-                  setGenerated(val);
-                }}
-              />
-              <View style={styles.qrContainer}>
-                {generated ? (
-                  <>
-                    <QRCode value={generated} size={200} getRef={c => (qrRef.current = c)} />
-                    <TouchableOpacity style={styles.downloadBtn} onPress={handleDownloadQR}>
-                      <Ionicons name="download-outline" size={20} color="#fff" />
-                      <Text style={styles.downloadBtnText}>Download QR</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <Text style={styles.placeholder}>QR Preview</Text>
-                )}
-              </View>
-            </View>
-          )}
-
-          <Pressable style={styles.dropdownHeader} onPress={() => setShowAccount(!showAccount)}>
-            <Text style={styles.dropdownTitle}>Create New Account</Text>
-            <Ionicons name={showAccount ? 'chevron-up' : 'chevron-down'} size={20} />
-          </Pressable>
-          {showAccount && (
-            <View style={styles.dropdownContent}>
-              <TextInput
-                style={styles.input}
-                placeholder="User Full Name"
-                value={newUsername}
-                onChangeText={setNewUsername}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-              />
-              {/* Role dropdown */}
-              <View style={{ marginBottom: 10 }}>
-                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Role:</Text>
-                <View style={{
-                  borderWidth: 1,
-                  borderColor: '#ccc',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  backgroundColor: '#fff'
-                }}>
-                  <Picker
-                    selectedValue={newRole}
-                    onValueChange={(itemValue) => setNewRole(itemValue as 'admin' | 'employee')}
-                    style={{ height: 50, width: '100%' }}
-                  >
-                    <Picker.Item label="Employee" value="employee" />
-                    <Picker.Item label="Admin" value="admin" />
-                  </Picker>
-                </View>
-              </View>
-              {/* Building dropdown */}
-              <View style={{ marginBottom: 10 }}>
-                <Text style={{ marginBottom: 6, fontWeight: '500' }}>Building:</Text>
-                <View style={{
-                  borderWidth: 1,
-                  borderColor: '#ccc',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  backgroundColor: '#fff'
-                }}>
-                  {buildingsLoading ? (
-                    <Text style={{ padding: 12 }}>Loading buildings...</Text>
-                  ) : (
-                    <Picker
-                      selectedValue={selectedBuildingId}
-                      onValueChange={itemValue => setSelectedBuildingId(itemValue)}
-                      style={{ height: 50, width: '100%' }}
-                    >
-                      {buildingList.map(b => (
-                        <Picker.Item
-                          key={b.building_id}
-                          label={`${b.building_id} - ${b.building_name}`}
-                          value={b.building_id}
-                        />
-                      ))}
-                    </Picker>
-                  )}
-                </View>
-              </View>
-              <TouchableOpacity style={styles.button} onPress={handleRegister}>
-                <Text style={styles.buttonText}>Create Account</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <Pressable style={styles.dropdownHeader} onPress={() => setShowManageAccounts(!showManageAccounts)}>
-            <Text style={styles.dropdownTitle}>Manage Accounts</Text>
-            <Ionicons name={showManageAccounts ? 'chevron-up' : 'chevron-down'} size={20} />
-          </Pressable>
-          {showManageAccounts && (
-            <View style={styles.dropdownContent}>
-              <TextInput
-                style={styles.input}
-                placeholder="Search user_id, name, role, building"
-                value={filter}
-                onChangeText={setFilter}
-              />
-              {usersLoading ? (
-                <ActivityIndicator size="small" color="#007bff" style={{ margin: 12 }} />
-              ) : filteredUsers.length === 0 ? (
-                <Text style={styles.placeholder}>No accounts found.</Text>
-              ) : (
-                filteredUsers.map(user => (
-                  <View key={user.user_id} style={styles.userRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontWeight: 'bold' }}>{user.user_id}</Text>
-                      <Text>Name: {user.user_fullname}</Text>
-                      <Text>Role: {user.user_level}</Text>
-                      <Text>Building: {user.building_id}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <TouchableOpacity onPress={() => openEditModal(user)}>
-                        <Ionicons name="pencil-outline" size={22} color="#007bff" />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteUser(user.user_id)}>
-                        <Ionicons name="trash-outline" size={22} color="red" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
-          )}
-        </>
-      )}
-
-      {/* Edit User Modal */}
+      
+      {/* Edit User Modal (shared for both platforms) */}
       <Modal
         visible={editModalVisible}
         animationType="slide"
@@ -1020,6 +1251,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  hamburgerBtn: {
+    position: 'absolute',
+    left: 0,
+    top: 10,
+    padding: 12,
+    zIndex: 2,
+  },
   logoCenterContainer: {
     position: 'absolute',
     left: 0, right: 0, top: 0, bottom: 0,
@@ -1037,6 +1275,21 @@ const styles = StyleSheet.create({
   logo: {
     width: 80,
     height: 80,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  menuDrawer: {
+    backgroundColor: '#fff',
+    borderTopRightRadius: 18,
+    borderBottomRightRadius: 18,
+    padding: 22,
+    width: 230,
+    elevation: 12,
+    marginTop: 48,
   },
   webNavBar: {
     flexDirection: 'row',
@@ -1084,19 +1337,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 12,
     marginLeft: 6,
-  },
-  dropdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#e6e6e6ff',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  dropdownTitle: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   dropdownContent: {
     backgroundColor: '#f9f9f9',
@@ -1174,5 +1414,56 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
+  },
+  drawerOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+    zIndex: 99,
+  },
+  drawerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  drawerMenu: {
+    width: '75%',
+    maxWidth: 340,
+    height: '100%',
+    backgroundColor: '#fff',
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    // NO borderRadius or shadow if you want it completely flat
+    // borderTopRightRadius: 0,
+    // borderBottomRightRadius: 0,
+    // elevation: 0,
+    // shadowOpacity: 0,
+    // shadowColor: 'transparent',
+    // shadowRadius: 0,
+    // shadowOffset: { width: 0, height: 0 },
+    justifyContent: 'flex-start',
+  },
+  drawerMenuTitle: {
+    fontWeight: 'bold',
+    fontSize: 22,
+    marginBottom: 26,
+    marginLeft: 4,
+    marginTop: 12,
+    color: '#222',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 2,
+    borderRadius: 0, // no rounding
+    marginBottom: 8,
+  },
+  menuIcon: {
+    marginRight: 12,
+    color: '#007bff',
+  },
+  menuText: {
+    fontSize: 17,
+    color: '#222',
+    fontWeight: '600',
   },
 });

@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useContext, useState } from 'react';
+import React, { createContext, ReactNode, useContext, useState } from "react";
 
 export interface ScanEntry {
   data: string;
@@ -11,7 +11,9 @@ interface ScanHistoryContextType {
   clearScans: () => void;
 }
 
-const ScanHistoryContext = createContext<ScanHistoryContextType | undefined>(undefined);
+const ScanHistoryContext = createContext<ScanHistoryContextType | undefined>(
+  undefined,
+);
 
 export const ScanHistoryProvider = ({ children }: { children: ReactNode }) => {
   const [scans, setScans] = useState<ScanEntry[]>([]);
@@ -33,6 +35,7 @@ export const ScanHistoryProvider = ({ children }: { children: ReactNode }) => {
 
 export const useScanHistory = (): ScanHistoryContextType => {
   const context = useContext(ScanHistoryContext);
-  if (!context) throw new Error('useScanHistory must be used within ScanHistoryProvider');
+  if (!context)
+    throw new Error("useScanHistory must be used within ScanHistoryProvider");
   return context;
 };

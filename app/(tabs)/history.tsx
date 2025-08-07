@@ -1,16 +1,16 @@
-import React from 'react';
-import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
-import { useScanHistory } from '../../contexts/ScanHistoryContext';
+import React from "react";
+import { FlatList, Image, StyleSheet, Text, View } from "react-native";
+import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 export default function HistoryScreen() {
   const { scans } = useScanHistory();
 
   return (
     <View style={styles.container}>
-      {                           }
+      {}
       <View style={styles.header}>
         <Image
-          source={require('../../assets/images/logo.png')}
+          source={require("../../assets/images/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -42,11 +42,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
   },
   logo: {
@@ -56,34 +56,34 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
   },
   noHistory: {
     fontSize: 16,
-    color: '#888',
-    textAlign: 'center',
+    color: "#888",
+    textAlign: "center",
     marginTop: 32,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 8,
     padding: 14,
     marginBottom: 12,
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
   },
   data: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#222',
+    fontWeight: "500",
+    color: "#222",
   },
   timestamp: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
     marginTop: 4,
   },
 });

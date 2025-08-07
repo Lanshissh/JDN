@@ -1,24 +1,24 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
-import { Slot, useRouter, Tabs } from 'expo-router';
-import SideNav, { TabKey } from '../../components/SideNav';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from "react";
+import { View, StyleSheet, Platform } from "react-native";
+import { Slot, useRouter, Tabs } from "expo-router";
+import SideNav, { TabKey } from "../../components/SideNav";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function TabLayout() {
-  const [activeTab, setActiveTab] = useState<TabKey>('admin');
+  const [activeTab, setActiveTab] = useState<TabKey>("admin");
   const router = useRouter();
 
   const handleSelectTab = (tab: TabKey) => {
     setActiveTab(tab);
-    if (tab === 'logout') {
-      router.replace('/(auth)/login');
+    if (tab === "logout") {
+      router.replace("/(auth)/login");
     } else {
       router.replace(`/(tabs)/${tab}` as any);
     }
   };
 
   // On web, use side nav
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return (
       <View style={styles.container}>
         <SideNav active={activeTab} onSelect={handleSelectTab} />
@@ -34,30 +34,40 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#fff',      // White for active icons
-        tabBarInactiveTintColor: '#fff',    // White for inactive icons
-        tabBarStyle: { backgroundColor: '#007bff', borderTopWidth: 1, borderTopColor: '#eee' }, // Optional: make bar blue for contrast
+        tabBarActiveTintColor: "#fff", // White for active icons
+        tabBarInactiveTintColor: "#fff", // White for inactive icons
+        tabBarStyle: {
+          backgroundColor: "#007bff",
+          borderTopWidth: 1,
+          borderTopColor: "#eee",
+        }, // Optional: make bar blue for contrast
       }}
     >
       <Tabs.Screen
         name="admin"
         options={{
-          title: 'Admin',
-          tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="person-circle-outline" color={color} />,
+          title: "Admin",
+          tabBarIcon: ({ color }: { color: string }) => (
+            <TabBarIcon name="person-circle-outline" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="scanner"
         options={{
-          title: 'Scanner',
-          tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="scan-outline" color={color} />,
+          title: "Scanner",
+          tabBarIcon: ({ color }: { color: string }) => (
+            <TabBarIcon name="scan-outline" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
-          title: 'History',
-          tabBarIcon: ({ color }: { color: string }) => <TabBarIcon name="time-outline" color={color} />,
+          title: "History",
+          tabBarIcon: ({ color }: { color: string }) => (
+            <TabBarIcon name="time-outline" color={color} />
+          ),
         }}
       />
     </Tabs>
@@ -69,6 +79,6 @@ function TabBarIcon({ name, color }: { name: string; color: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: 'row', backgroundColor: '#f9f9f9' },
+  container: { flex: 1, flexDirection: "row", backgroundColor: "#f9f9f9" },
   content: { flex: 1 },
 });

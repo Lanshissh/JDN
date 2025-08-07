@@ -1,8 +1,11 @@
-import { OnSuccessfulScanProps, QRCodeScanner } from '@masumdev/rn-qrcode-scanner';
-import { useFocusEffect } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
-import { useScanHistory } from '../../contexts/ScanHistoryContext';
+import {
+  OnSuccessfulScanProps,
+  QRCodeScanner,
+} from "@masumdev/rn-qrcode-scanner";
+import { useFocusEffect } from "expo-router";
+import React, { useState } from "react";
+import { Alert, Image, StyleSheet, Text, View } from "react-native";
+import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 export default function ScannerScreen() {
   const { addScan } = useScanHistory();
@@ -22,15 +25,15 @@ export default function ScannerScreen() {
     };
 
     addScan(scanData);
-    Alert.alert('Scanned!', scanText);
+    Alert.alert("Scanned!", scanText);
 
     setTimeout(() => setScanned(false), 3000);
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      setScannerKey(prev => prev + 1);
-    }, [])
+      setScannerKey((prev) => prev + 1);
+    }, []),
   );
 
   return (
@@ -43,7 +46,7 @@ export default function ScannerScreen() {
 
       <View style={styles.logoContainer}>
         <Image
-          source={require('../../assets/images/logo.png')}
+          source={require("../../assets/images/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -60,14 +63,14 @@ export default function ScannerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   logoContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: 40,
     left: 0,
     right: 0,
-    alignItems: 'center',
+    alignItems: "center",
     zIndex: 10,
   },
   logo: {
@@ -76,15 +79,15 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   overlay: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 60,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   overlayText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: "rgba(0,0,0,0.5)",
     padding: 8,
     borderRadius: 10,
   },

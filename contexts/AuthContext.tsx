@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 interface AuthContextType {
   isLoggedIn: boolean;
@@ -10,14 +10,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     const initialize = async () => {
-      const storedToken = await AsyncStorage.getItem('token');
+      const storedToken = await AsyncStorage.getItem("token");
       setToken(storedToken);
       setIsLoggedIn(!!storedToken);
       setLoading(false);
@@ -28,7 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setIsLoggedIn(false);
     setToken(null);
-    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem("token");
   };
 
   return (
@@ -40,6 +42,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 };

@@ -4,7 +4,7 @@ import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, Tou
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.200.109:3000/auth/login';
+const API_URL = 'http://192.168.100.130:3000/auth/login';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');

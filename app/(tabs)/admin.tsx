@@ -33,9 +33,9 @@ type AddRateFields = {
   [key: string]: string;
 };
 
-const API_USERS_URL = 'http://192.168.200.109:3000/users';
-const API_BUILDINGS_URL = 'http://192.168.200.109:3000/buildings';
-const API_RATES_URL = 'http://192.168.200.109:3000/rates';
+const API_USERS_URL = 'http://192.168.100.130:3000/users';
+const API_BUILDINGS_URL = 'http://192.168.100.130:3000/buildings';
+const API_RATES_URL = 'http://192.168.100.130:3000/rates';
 
 export default function AdminScreen() {
   const [newUsername, setNewUsername] = useState('');
@@ -407,9 +407,39 @@ export default function AdminScreen() {
   const handleDownloadQR = async () => {
     if (!qrRef.current) return;
     qrRef.current.toDataURL?.(async (dataURL: string) => {
-      const uri = FileSystem.cacheDirectory + 'qr-code.png';
-      await FileSystem.writeAsStringAsync(uri, dataURL, { encoding: FileSystem.EncodingType.Base64 });
-      await Sharing.shareAsync(uri);
+      if (Platform.OS === 'web') {
+        const qrSize = 200;
+        const inchToPx = 96;
+        const marginPx = 0.2 * inchToPx;
+        const canvasSize = qrSize + 2 * marginPx;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvasSize, canvasSize);
+
+        const img = new window.Image();
+        img.onload = () => {
+          ctx.drawImage(img, marginPx, marginPx, qrSize, qrSize);
+
+          const link = document.createElement('a');
+          link.href = canvas.toDataURL('image/png');
+          link.download = 'qr-code.png';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+        img.src = 'data:image/png;base64,' + dataURL;
+      } else {
+        const uri = FileSystem.cacheDirectory + 'qr-code.png';
+        await FileSystem.writeAsStringAsync(uri, dataURL, { encoding: FileSystem.EncodingType.Base64 });
+        await Sharing.shareAsync(uri);
+      }
     });
   };
 

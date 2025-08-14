@@ -12,11 +12,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import axios from "axios";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../../contexts/AuthContext";
+import { BASE_API } from "../../constants/api";
 
-const API_URL = "http://192.168.100.11:3000/auth/login";
+const API_URL = `${BASE_API}/auth/login`;
 
 export default function LoginScreen() {
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,12 +34,10 @@ export default function LoginScreen() {
       });
 
       const { token } = res.data;
-      await AsyncStorage.setItem("token", token);
+      await login(token);
 
       router.replace("/(tabs)/admin");
     } catch (err: any) {
-      console.log("[LOGIN ERROR]", err, err?.response?.data);
-
       if (err.response?.data?.error) {
         setError(err.response.data.error);
       } else if (err.message) {
@@ -55,14 +55,15 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.select({ ios: "padding", android: undefined })}
     >
-      <View style={styles.innerContainer}>
+      <View style={styles.card}>
         <Image
           source={require("../../assets/images/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
 
-        <Text style={styles.title}>Login</Text>
+        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>Log in to your account</Text>
 
         <TextInput
           style={styles.input}
@@ -71,6 +72,7 @@ export default function LoginScreen() {
           onChangeText={setUsername}
           autoCapitalize="none"
           autoCorrect={false}
+          placeholderTextColor="#9aa5b1"
         />
 
         <TextInput
@@ -79,21 +81,20 @@ export default function LoginScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          placeholderTextColor="#9aa5b1"
         />
 
-        {error ? (
-          <Text style={{ color: "red", marginBottom: 12 }}>{error}</Text>
-        ) : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
-          style={styles.button}
+          style={[styles.button, loading && styles.buttonDisabled]}
           onPress={handleLogin}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>LOGIN</Text>
+            <Text style={styles.buttonText}>Sign In</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -104,43 +105,65 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fdfdfd",
+    backgroundColor: "#f4f6f8",
     justifyContent: "center",
+    padding: 16,
   },
-  innerContainer: {
-    paddingHorizontal: 24,
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
     alignItems: "center",
+    ...Platform.select({
+      web: { boxShadow: "0 8px 30px rgba(0,0,0,0.08)" as any },
+      default: { elevation: 4 },
+    }),
   },
   logo: {
-    width: 200,
-    height: 200,
-    marginBottom: 24,
+    width: 120,
+    height: 120,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 32,
-    color: "#333",
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#102a43",
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#627d98",
+    marginBottom: 20,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 12,
-    borderRadius: 8,
+    borderColor: "#d9e2ec",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
     backgroundColor: "#fff",
     width: "100%",
-    marginBottom: 16,
+    marginBottom: 14,
+    color: "#102a43",
   },
   button: {
-    backgroundColor: "#007bff",
+    backgroundColor: "#1f4bd8",
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     width: "100%",
     alignItems: "center",
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: "#fff",
+    fontWeight: "700",
     fontSize: 16,
-    fontWeight: "bold",
+  },
+  error: {
+    color: "#e53935",
+    fontSize: 13,
+    marginBottom: 8,
   },
 });

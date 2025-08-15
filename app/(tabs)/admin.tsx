@@ -16,12 +16,15 @@ import BuildingPanel from "../../components/admin/BuildingPanel";
 import RatesPanel from "../../components/admin/RatesPanel";
 import StallsPanel from "../../components/admin/StallsPanel";
 import MeterPanel from "../../components/admin/MeterPanel";
-import MeterReadingPanel from "../../components/admin/MeterReadingPanel"; // ✅ NEW
+import MeterReadingPanel from "../../components/admin/MeterReadingPanel";
+import TenantsPanel from "../../components/admin/TenantsPanel";
 import { Ionicons } from "@expo/vector-icons";
 import { Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { jwtDecode } from "jwt-decode";
 import { LogBox } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 LogBox.ignoreLogs([
   "VirtualizedLists should never be nested inside plain ScrollViews"
 ]);
@@ -30,7 +33,7 @@ export default function AdminScreen() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activePage, setActivePage] = useState<
-    "accounts" | "buildings" | "rates" | "stalls" | "meters" | "readings"
+    "accounts" | "buildings" | "rates" | "stalls" | "tenants" | "meters" | "readings"
   >("accounts");
   const slideAnim = useRef(new Animated.Value(-250)).current;
   const drawerWidth = 250;
@@ -38,26 +41,37 @@ export default function AdminScreen() {
   const [userInfo, setUserInfo] = useState<{ name: string; level: string } | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(false);
 
-  useEffect(() => {
-    if (token) {
-      try {
-        const decoded: any = jwtDecode(token);
-        setUserInfo({
-          name: decoded.user_fullname,
-          level: decoded.user_level,
-        });
-        setWelcomeVisible(true);
-      } catch (err) {
-        console.error("Failed to decode token", err);
-      }
+useEffect(() => {
+  if (!token) return;
+
+  // decode for display (same as before)
+  try {
+    const decoded: any = jwtDecode(token);
+    setUserInfo({ name: decoded.user_fullname, level: decoded.user_level });
+  } catch (err) {
+    console.error("Failed to decode token", err);
+  }
+
+  // show-once-per-login
+  (async () => {
+    // make a per-login session key; using part of the JWT is enough
+    const sessionKey = `welcome-shown:${token.slice(-16)}`;
+    const already = await AsyncStorage.getItem(sessionKey);
+
+    if (!already) {
+      setWelcomeVisible(true);          // show only once per token
+      await AsyncStorage.setItem(sessionKey, "1");
     }
-  }, [token]);
+  })();
+}, [token]);
+
 
   const menuItems = [
     { label: "Accounts", key: "accounts", icon: "people-outline" },
     { label: "Buildings", key: "buildings", icon: "business-outline" },
     { label: "Rates", key: "rates", icon: "pricetag-outline" },
     { label: "Stalls", key: "stalls", icon: "storefront-outline" },
+    { label: "Tenants", key: "tenants", icon: "person-outline" },
     { label: "Meters", key: "meters", icon: "speedometer-outline" },
     { label: "Meter Readings", key: "readings", icon: "reader-outline" },
   ];
@@ -72,6 +86,8 @@ export default function AdminScreen() {
         return <RatesPanel token={token} />;
       case "stalls":
         return <StallsPanel token={token} />;
+      case "tenants":
+        return <TenantsPanel token={token} />;
       case "meters":
         return <MeterPanel token={token} />;
       case "readings":
@@ -94,6 +110,8 @@ export default function AdminScreen() {
     }).start();
   }, [menuOpen]);
 
+
+  
   return (
     <SafeAreaView style={styles.safe}>
       {/* Welcome Modal */}

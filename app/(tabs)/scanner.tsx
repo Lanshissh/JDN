@@ -2,38 +2,37 @@ import {
   OnSuccessfulScanProps,
   QRCodeScanner,
 } from "@masumdev/rn-qrcode-scanner";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Image, StyleSheet, Text, View } from "react-native";
 import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 export default function ScannerScreen() {
+  const router = useRouter();
   const { addScan } = useScanHistory();
   const [scanned, setScanned] = useState(false);
   const [scannerKey, setScannerKey] = useState(0);
 
   const handleScan = (data: OnSuccessfulScanProps) => {
     if (scanned) return;
-
     setScanned(true);
+
     const scanText =
       (data as any)?.rawData || (data as any)?.data || JSON.stringify(data);
 
-    const scanData = {
-      data: scanText,
-      timestamp: new Date().toISOString(),
-    };
+    addScan({ data: String(scanText), timestamp: new Date().toISOString() });
 
-    addScan(scanData);
-    Alert.alert("Scanned!", scanText);
+    // Jump to History so the dashboard fetches immediately
+    router.replace("/(tabs)/history");
 
+    Alert.alert("Scanned!", String(scanText));
     setTimeout(() => setScanned(false), 3000);
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      setScannerKey((prev) => prev + 1);
-    }, []),
+      setScannerKey((prev) => prev + 1); // re-create scanner on focus
+    }, [])
   );
 
   return (
@@ -43,7 +42,6 @@ export default function ScannerScreen() {
         core={{ onSuccessfulScan: handleScan }}
         permissionScreen={{}}
       />
-
       <View style={styles.logoContainer}>
         <Image
           source={require("../../assets/images/logo.png")}
@@ -51,8 +49,6 @@ export default function ScannerScreen() {
           resizeMode="contain"
         />
       </View>
-
-      {/* 📣 Text Overlay */}
       <View style={styles.overlay}>
         <Text style={styles.overlayText}>Point your camera at a QR Code</Text>
       </View>
@@ -61,10 +57,7 @@ export default function ScannerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  container: { flex: 1, backgroundColor: "#000" },
   logoContainer: {
     position: "absolute",
     top: 40,
@@ -73,11 +66,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 10,
   },
-  logo: {
-    width: 100,
-    height: 100,
-    opacity: 0.9,
-  },
+  logo: { width: 100, height: 100, opacity: 0.9 },
   overlay: {
     position: "absolute",
     bottom: 60,

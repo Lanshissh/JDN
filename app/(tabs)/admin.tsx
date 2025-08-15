@@ -378,6 +378,7 @@ const styles = StyleSheet.create({
   },
   navButtonActive: { backgroundColor: "rgba(255,255,255,0.15)" },
   mobileHeader: {
+    marginTop: 25,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ffffffff",

@@ -41,13 +41,11 @@ export default function AccountsPanel({
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [query, setQuery] = useState("");
 
-  // Create form state
   const [fullname, setFullname] = useState("");
   const [password, setPassword] = useState("");
   const [level, setLevel] = useState<"admin" | "employee">("employee");
   const [buildingId, setBuildingId] = useState("");
 
-  // Edit modal state
   const [editVisible, setEditVisible] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editFullname, setEditFullname] = useState("");
@@ -101,7 +99,6 @@ export default function AccountsPanel({
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const filteredUsers = useMemo(() => {
@@ -184,11 +181,9 @@ export default function AccountsPanel({
    */
   const confirmDelete = (title: string, message: string): Promise<boolean> => {
     if (Platform.OS === "web") {
-      // window.confirm returns true/false
-      // eslint-disable-next-line no-alert
       const ok = (globalThis as any).confirm
         ? (globalThis as any).confirm(`${title}\n\n${message}`)
-        : true; // fallback if confirm not available
+        : true;
       return Promise.resolve(!!ok);
     }
     return new Promise((resolve) => {
@@ -210,7 +205,7 @@ export default function AccountsPanel({
       setSubmitting(true);
       await api.delete(`/users/${encodeURIComponent(u.user_id)}`);
       await loadAll();
-      // Keep the success Alert on native; web already had a confirm
+
       if (Platform.OS !== "web") {
         Alert.alert("Deleted", "User removed.");
       }

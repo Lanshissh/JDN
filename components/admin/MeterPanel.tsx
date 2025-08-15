@@ -1,5 +1,4 @@
-// components/admin/MeterPanel.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,548 +12,836 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
-  Dimensions,
 } from "react-native";
 import axios from "axios";
 import { Picker } from "@react-native-picker/picker";
 import QRCode from "react-native-qrcode-svg";
 import { BASE_API } from "../../constants/api";
 
-/** Types **/
-type Meter = {
+export type Meter = {
   meter_id: string;
   meter_type: "electric" | "water" | "lpg";
   meter_sn: string;
-  meter_mult: number | null;
+  meter_mult: number;
   stall_id: string;
   meter_status: "active" | "inactive";
   last_updated: string;
   updated_by: string;
 };
 
-type Stall = {
+export type Stall = {
   stall_id: string;
   stall_sn: string;
 };
 
 export default function MeterPanel({ token }: { token: string | null }) {
-  /** API **/
-  const authHeader = useMemo(
-    () => ({ Authorization: `Bearer ${token ?? ""}` }),
-    [token]
-  );
-  const api = useMemo(
-    () =>
-      axios.create({
-        baseURL: BASE_API,
-        headers: authHeader,
-        timeout: 15000,
-      }),
-    [authHeader]
-  );
-
-  /** Data **/
   const [busy, setBusy] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [meters, setMeters] = useState<Meter[]>([]);
   const [stalls, setStalls] = useState<Stall[]>([]);
   const [query, setQuery] = useState("");
 
-  /** QR modal **/
-  const [qrVisible, setQrVisible] = useState(false);
-  const [qrValue, setQrValue] = useState<string>("");
+  const [filterType, setFilterType] = useState<
+    "all" | "electric" | "water" | "lpg"
+  >("all");
 
-  /** Edit modal **/
+  // Sort state
+  const [sortBy, setSortBy] = useState<
+    "id_asc" | "id_desc" | "type" | "stall" | "status"
+  >("id_asc");
+
+  const [type, setType] = useState<Meter["meter_type"]>("electric");
+  const [sn, setSn] = useState("");
+  const [mult, setMult] = useState("1.00");
+  const [stallId, setStallId] = useState("");
+  const [status, setStatus] = useState<Meter["meter_status"]>("inactive");
+
   const [editVisible, setEditVisible] = useState(false);
-  const [editId, setEditId] = useState("");
+  const [editRow, setEditRow] = useState<Meter | null>(null);
   const [editType, setEditType] = useState<Meter["meter_type"]>("electric");
   const [editSn, setEditSn] = useState("");
-  const [editMult, setEditMult] = useState("");
+  const [editMult, setEditMult] = useState("1.00");
   const [editStallId, setEditStallId] = useState("");
-  const [editStatus, setEditStatus] = useState<Meter["meter_status"]>("inactive");
+  const [editStatus, setEditStatus] =
+    useState<Meter["meter_status"]>("inactive");
+
+  const [qrVisible, setQrVisible] = useState(false);
+  const [qrMeterId, setQrMeterId] = useState("");
+  const qrRef = useRef<any>(null);
+
+  const authHeader = useMemo(
+    () => ({ Authorization: `Bearer ${token ?? ""}` }),
+    [token],
+  );
+  const api = useMemo(
+    () =>
+      axios.create({ baseURL: BASE_API, headers: authHeader, timeout: 15000 }),
+    [authHeader],
+  );
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const loadAll = async () => {
-    if (!token) {
-      setBusy(false);
-      Alert.alert("Not logged in", "Please log in to manage meters.");
-      return;
-    }
+    if (!token) return;
     try {
       setBusy(true);
-      const [mRes, sRes] = await Promise.all([
+      const [metersRes, stallsRes] = await Promise.all([
         api.get<Meter[]>("/meters"),
         api.get<Stall[]>("/stalls"),
       ]);
-      // sort by meter_id ascending for stable view
-      const sorted = [...mRes.data].sort((a, b) =>
-        a.meter_id.localeCompare(b.meter_id)
-      );
-      setMeters(sorted);
-      setStalls(sRes.data);
+      setMeters(metersRes.data || []);
+      setStalls(stallsRes.data || []);
     } catch (err: any) {
       console.error("[METERS LOAD]", err?.response?.data || err?.message);
-      Alert.alert(
-        "Load failed",
-        err?.response?.data?.error ?? "Please check your connection and permissions."
-      );
+      Alert.alert("Load failed", "Could not load meters/stalls.");
     } finally {
       setBusy(false);
     }
   };
 
-  /** Derived **/
-  const stallsById = useMemo(() => {
-    const map = new Map<string, Stall>();
-    stalls.forEach((s) => map.set(s.stall_id, s));
-    return map;
-  }, [stalls]);
-
+  // Search + type filter
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return meters;
-    return meters.filter((m) => {
-      const stall = stallsById.get(m.stall_id);
-      return (
-        m.meter_id.toLowerCase().includes(q) ||
-        (m.meter_sn || "").toLowerCase().includes(q) ||
-        m.meter_type.toLowerCase().includes(q) ||
-        m.meter_status.toLowerCase().includes(q) ||
-        (m.stall_id || "").toLowerCase().includes(q) ||
-        (stall?.stall_sn || "").toLowerCase().includes(q)
-      );
-    });
-  }, [meters, query, stallsById]);
-
-  /** Actions **/
-  const openQr = (meterId: string) => {
-    setQrValue(meterId);
-    setQrVisible(true);
-  };
-
-  const confirmDelete = (meterId: string) => {
-    Alert.alert(
-      "Delete meter?",
-      `This will permanently remove ${meterId}.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => onDelete(meterId),
-        },
-      ]
+    let list = meters;
+    if (filterType !== "all") {
+      list = list.filter((m) => m.meter_type === filterType);
+    }
+    if (!q) return list;
+    return list.filter((m) =>
+      [m.meter_id, m.meter_sn, m.meter_type, m.stall_id, m.meter_status]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
     );
+  }, [meters, query, filterType]);
+
+  // helper: numeric part from meter_id like "MTR-12"
+  const mtrNum = (id: string) => {
+    const m = /^MTR-(\d+)/i.exec(id || "");
+    return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
   };
 
-  const onDelete = async (meterId: string) => {
+  // Sorting
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    switch (sortBy) {
+      case "id_desc":
+        arr.sort(
+          (a, b) =>
+            mtrNum(b.meter_id) - mtrNum(a.meter_id) ||
+            b.meter_id.localeCompare(a.meter_id),
+        );
+        break;
+      case "type":
+        arr.sort(
+          (a, b) =>
+            a.meter_type.localeCompare(b.meter_type) ||
+            mtrNum(a.meter_id) - mtrNum(b.meter_id),
+        );
+        break;
+      case "stall":
+        arr.sort(
+          (a, b) =>
+            (a.stall_id || "").localeCompare(b.stall_id || "") ||
+            mtrNum(a.meter_id) - mtrNum(b.meter_id),
+        );
+        break;
+      case "status":
+        // active first, then inactive
+        const rank = (s: Meter["meter_status"]) => (s === "active" ? 0 : 1);
+        arr.sort(
+          (a, b) =>
+            rank(a.meter_status) - rank(b.meter_status) ||
+            mtrNum(a.meter_id) - mtrNum(b.meter_id),
+        );
+        break;
+      case "id_asc":
+      default:
+        arr.sort(
+          (a, b) =>
+            mtrNum(a.meter_id) - mtrNum(b.meter_id) ||
+            a.meter_id.localeCompare(b.meter_id),
+        );
+        break;
+    }
+    return arr;
+  }, [filtered, sortBy]);
+
+  const onCreate = async () => {
+    if (!sn.trim() || !stallId.trim()) {
+      Alert.alert("Missing info", "Serial number and Stall are required.");
+      return;
+    }
+    const payload = {
+      meter_type: type,
+      meter_sn: sn.trim(),
+      meter_mult: Number(mult) || 1,
+      stall_id: stallId.trim(),
+      meter_status: status,
+    };
     try {
       setSubmitting(true);
-      await api.delete(`/meters/${encodeURIComponent(meterId)}`);
+      await api.post("/meters", payload);
+      Alert.alert("Success", "Meter added.");
+      setSn("");
+      setMult("1.00");
+      setStallId("");
+      setStatus("inactive");
       await loadAll();
-      Alert.alert("Deleted", "Meter removed.");
     } catch (err: any) {
-      console.error("[DELETE METER]", err?.response?.data || err?.message);
-      Alert.alert("Delete failed", err?.response?.data?.error ?? "Server error.");
+      console.error("[METER CREATE]", err?.response?.data || err?.message);
+      Alert.alert(
+        "Create failed",
+        err?.response?.data?.message || "Unable to add meter.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  /** EDIT (new) **/
   const openEdit = (m: Meter) => {
-    setEditId(m.meter_id);
+    setEditRow(m);
     setEditType(m.meter_type);
-    setEditSn(m.meter_sn || "");
-    setEditMult(m.meter_mult != null ? String(m.meter_mult) : "");
+    setEditSn(m.meter_sn);
+    setEditMult(String(m.meter_mult ?? "1"));
     setEditStallId(m.stall_id);
     setEditStatus(m.meter_status);
     setEditVisible(true);
   };
 
   const onUpdate = async () => {
-    if (!editId) return;
+    if (!editRow) return;
     try {
       setSubmitting(true);
-      await api.put(`/meters/${encodeURIComponent(editId)}`, {
+      await api.put(`/meters/${encodeURIComponent(editRow.meter_id)}`, {
         meter_type: editType,
-        meter_sn: editSn,
-        meter_mult: editMult.trim() === "" ? undefined : Number(editMult),
-        stall_id: editStallId,
+        meter_sn: editSn.trim(),
+        meter_mult: Number(editMult) || 1,
+        stall_id: editStallId.trim(),
         meter_status: editStatus,
       });
       setEditVisible(false);
       await loadAll();
       Alert.alert("Updated", "Meter updated successfully.");
     } catch (err: any) {
-      console.error("[UPDATE METER]", err?.response?.data || err?.message);
-      Alert.alert("Update failed", err?.response?.data?.error ?? "Server error.");
+      console.error("[METER UPDATE]", err?.response?.data || err?.message);
+      Alert.alert(
+        "Update failed",
+        err?.response?.data?.error || "Server error.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  /** Render **/
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>Manage Meters</Text>
-      <TextInput
-        style={styles.search}
-        placeholder="Search by ID, SN, type, stall, status..."
-        value={query}
-        onChangeText={setQuery}
-      />
+  const confirmDelete = (m: Meter): Promise<boolean> =>
+    Platform.OS === "web"
+      ? Promise.resolve(window.confirm(`Delete meter ${m.meter_id}?`))
+      : new Promise((resolve) => {
+          Alert.alert(
+            "Delete meter",
+            `Are you sure you want to delete ${m.meter_id}?`,
+            [
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => resolve(false),
+              },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => resolve(true),
+              },
+            ],
+          );
+        });
 
-      {busy ? (
-        <View style={styles.loader}>
-          <ActivityIndicator />
+  const onDelete = async (m: Meter) => {
+    const ok = await confirmDelete(m);
+    if (!ok) return;
+    try {
+      setSubmitting(true);
+      await api.delete(`/meters/${encodeURIComponent(m.meter_id)}`);
+      await loadAll();
+      if (Platform.OS !== "web") Alert.alert("Deleted", "Meter removed.");
+    } catch (err: any) {
+      Alert.alert(
+        "Delete failed",
+        err?.response?.data?.error || "Server error.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openQr = (meter_id: string) => {
+    setQrMeterId(meter_id);
+    setQrVisible(true);
+  };
+
+  const downloadQr = () => {
+    if (!qrRef.current) return;
+    try {
+      qrRef.current.toDataURL((data: string) => {
+        const dataUrl = `data:image/png;base64,${data}`;
+        if (Platform.OS === "web" && typeof document !== "undefined") {
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = `${qrMeterId || "meter-qr"}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } else {
+          Alert.alert(
+            "Save QR",
+            "On mobile, please take a screenshot of this QR.",
+          );
+        }
+      });
+    } catch (err) {
+      console.error("[QR DOWNLOAD]", err);
+      Alert.alert("Download failed", "Could not generate QR image.");
+    }
+  };
+
+  if (busy) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1 }}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Add Meter */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Add Meter</Text>
+
+          {/* Type */}
+          <Text style={styles.label}>Type</Text>
+          <View style={styles.pickerWrap}>
+            <Picker
+              selectedValue={type}
+              onValueChange={(v) => setType(v)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Electric" value="electric" />
+              <Picker.Item label="Water" value="water" />
+              <Picker.Item label="LPG (Gas)" value="lpg" />
+            </Picker>
+          </View>
+
+          {/* Serial Number */}
+          <Text style={styles.label}>Serial Number</Text>
+          <TextInput
+            value={sn}
+            onChangeText={setSn}
+            placeholder="e.g. WDC-E-12345"
+            style={styles.input}
+          />
+
+          {/* Multiplier */}
+          <Text style={styles.label}>Multiplier</Text>
+          <TextInput
+            value={mult}
+            onChangeText={setMult}
+            keyboardType="numeric"
+            placeholder="1.00"
+            style={styles.input}
+          />
+
+          {/* Stall */}
+          <Text style={styles.label}>Stall</Text>
+          <View style={styles.pickerWrap}>
+            <Picker
+              selectedValue={stallId}
+              onValueChange={(v) => setStallId(v)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Select a stall" value="" />
+              {stalls.map((s) => (
+                <Picker.Item
+                  key={s.stall_id}
+                  label={`${s.stall_id} • ${s.stall_sn || ""}`}
+                  value={s.stall_id}
+                />
+              ))}
+            </Picker>
+          </View>
+
+          {/* Status */}
+          <Text style={styles.label}>Status</Text>
+          <View style={styles.pickerWrap}>
+            <Picker
+              selectedValue={status}
+              onValueChange={(v) => setStatus(v)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Inactive" value="inactive" />
+              <Picker.Item label="Active" value="active" />
+            </Picker>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.btn, submitting && { opacity: 0.7 }]}
+            onPress={onCreate}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>Add Meter</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.meter_id}
-          ListEmptyComponent={<Text style={styles.empty}>No meters found.</Text>}
-          renderItem={({ item }) => {
-            const stall = stallsById.get(item.stall_id);
-            return (
-              <View style={styles.listRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>
-                    {item.meter_id} ({item.meter_type})
-                  </Text>
-                  <Text style={styles.rowSub}>
-                    {item.meter_sn || "—"} • {item.meter_status} • Stall:{" "}
-                    {stall?.stall_sn || item.stall_id || "—"}
-                  </Text>
+
+        {/* Manage Meters */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Manage Meters</Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search by ID, SN, type, stall, status"
+            style={styles.input}
+          />
+
+          {/* Filter chips */}
+          <View style={styles.filterRow}>
+            <Chip
+              label="All"
+              active={filterType === "all"}
+              onPress={() => setFilterType("all")}
+            />
+            <Chip
+              label="Electric"
+              active={filterType === "electric"}
+              onPress={() => setFilterType("electric")}
+            />
+            <Chip
+              label="Water"
+              active={filterType === "water"}
+              onPress={() => setFilterType("water")}
+            />
+            <Chip
+              label="Gas"
+              active={filterType === "lpg"}
+              onPress={() => setFilterType("lpg")}
+            />
+          </View>
+
+          {/* Sort chips */}
+          <View style={[styles.filterRow, { marginTop: -4 }]}>
+            <Chip
+              label="ID ↑"
+              active={sortBy === "id_asc"}
+              onPress={() => setSortBy("id_asc")}
+            />
+            <Chip
+              label="ID ↓"
+              active={sortBy === "id_desc"}
+              onPress={() => setSortBy("id_desc")}
+            />
+            <Chip
+              label="Type"
+              active={sortBy === "type"}
+              onPress={() => setSortBy("type")}
+            />
+            <Chip
+              label="Stall"
+              active={sortBy === "stall"}
+              onPress={() => setSortBy("stall")}
+            />
+            <Chip
+              label="Status"
+              active={sortBy === "status"}
+              onPress={() => setSortBy("status")}
+            />
+          </View>
+
+          {/* List */}
+          {sorted.length === 0 ? (
+            <Text style={{ paddingVertical: 12, color: "#666" }}>
+              No meters found.
+            </Text>
+          ) : (
+            <FlatList
+              data={sorted}
+              keyExtractor={(item) => item.meter_id}
+              renderItem={({ item }) => (
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTitle}>{item.meter_id}</Text>
+                    <Text style={styles.rowSub}>
+                      {item.meter_type.toUpperCase()} • SN: {item.meter_sn} •
+                      Mult: {item.meter_mult} • Stall: {item.stall_id} •{" "}
+                      {item.meter_status}
+                    </Text>
+                  </View>
+
+                  {/* Actions */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={styles.pill}
+                      onPress={() => openQr(item.meter_id)}
+                    >
+                      <Text style={styles.pillTextEdit}>QR</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pill}
+                      onPress={() => openEdit(item)}
+                    >
+                      <Text style={styles.pillTextEdit}>Edit</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.pill}
+                      onPress={() => onDelete(item)}
+                    >
+                      <Text style={styles.pillTextDelete}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+
+        {/* QR Modal */}
+        <Modal
+          visible={qrVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setQrVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.qrCard}>
+              <Text style={styles.qrTitle}>QR Code</Text>
+              <Text style={styles.qrSub}>{qrMeterId}</Text>
+              <View style={styles.qrWrap}>
+                <QRCode
+                  value={qrMeterId}
+                  size={220}
+                  backgroundColor="white"
+                  color="#000"
+                  getRef={(c: any) => (qrRef.current = c)}
+                />
+              </View>
+
+              {Platform.OS === "web" && (
+                <TouchableOpacity
+                  style={{
+                    marginTop: 14,
+                    backgroundColor: "#1f4bd8",
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    width: "50%",
+                    alignSelf: "center",
+                  }}
+                  onPress={downloadQr}
+                >
+                  <Text style={styles.btnText}>Download QR (PNG)</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setQrVisible(false)}
+              >
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Edit Modal */}
+        <Modal
+          visible={editVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setEditVisible(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.modalOverlay}
+          >
+            <View style={styles.editCard}>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 16 }}>
+                <Text style={styles.qrTitle}>Edit Meter</Text>
+                <Text style={styles.qrSub}>{editRow?.meter_id}</Text>
+
+                {/* Type */}
+                <Text style={styles.label}>Type</Text>
+                <View style={styles.pickerWrap}>
+                  <Picker
+                    selectedValue={editType}
+                    onValueChange={(v) => setEditType(v)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Electric" value="electric" />
+                    <Picker.Item label="Water" value="water" />
+                    <Picker.Item label="LPG (Gas)" value="lpg" />
+                  </Picker>
                 </View>
 
-                {/* EDIT (new) */}
-                <TouchableOpacity
-                  style={[styles.link, { marginRight: 8 }]}
-                  onPress={() => openEdit(item)}
-                >
-                  <Text style={styles.linkText}>Edit</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.link, { marginRight: 8 }]}
-                  onPress={() => openQr(item.meter_id)}
-                >
-                  <Text style={styles.linkText}>QR Code</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.link}
-                  onPress={() => confirmDelete(item.meter_id)}
-                >
-                  <Text style={[styles.linkText, { color: "#ef4444" }]}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          }}
-        />
-      )}
-
-      {/* EDIT MODAL */}
-      <Modal
-        visible={editVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setEditVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalWrap}
-        >
-          <View
-            style={[
-              styles.modalCard,
-              Platform.OS !== "web" && {
-                maxHeight: Math.round(Dimensions.get("window").height * 0.85),
-              },
-            ]}
-          >
-            <ScrollView
-              contentContainerStyle={{ paddingBottom: 12 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.modalTitle}>Edit {editId}</Text>
-
-              <Dropdown
-                label="Type"
-                value={editType}
-                onChange={(v) => setEditType(v as Meter["meter_type"])}
-                options={[
-                  { label: "Electric", value: "electric" },
-                  { label: "Water", value: "water" },
-                  { label: "LPG", value: "lpg" },
-                ]}
-              />
-
-<View style={styles.rowWrap}>
-  <View style={{ flex: 1, marginTop: 8 }}>
-    <Text style={styles.dropdownLabel}>Serial Number</Text>
-    <TextInput
-      style={styles.input}
-      value={editSn}
-      onChangeText={setEditSn}
-      autoCapitalize="characters"
-      placeholder="e.g. WDC-E-12345"
-    />
-  </View>
-
-  <View style={{ flex: 1, marginTop: 8 }}>
-    <Text style={styles.dropdownLabel}>Multiplier (optional)</Text>
-    <TextInput
-      style={styles.input}
-      value={editMult}
-      // keep only digits and one dot
-      onChangeText={(t) => setEditMult(t.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
-      keyboardType="numeric"
-      inputMode="numeric"
-      placeholder="1, 10, 100"
-    />
-  </View>
-  </View>
-
-              <Dropdown
-                label="Stall"
-                value={editStallId}
-                onChange={setEditStallId}
-                options={stalls.map((s) => ({
-                  label: `${s.stall_sn} (${s.stall_id})`,
-                  value: s.stall_id,
-                }))}
-              />
-
-              <Dropdown
-                label="Status"
-                value={editStatus}
-                onChange={(v) =>
-                  setEditStatus(v as Meter["meter_status"])
-                }
-                options={[
-                  { label: "Active", value: "active" },
-                  { label: "Inactive", value: "inactive" },
-                ]}
-              />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.btn, styles.btnGhost]}
-                  onPress={() => setEditVisible(false)}
-                >
-                  <Text style={[styles.btnText, { color: "#102a43" }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.btn, submitting && styles.btnDisabled]}
-                  onPress={onUpdate}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.btnText}>Save changes</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* QR CODE MODAL */}
-      <Modal
-        visible={qrVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setQrVisible(false)}
-      >
-        <View style={styles.modalWrap}>
-          <View style={styles.qrCard}>
-            <Text style={styles.modalTitle}>Meter QR</Text>
-            <View style={{ alignItems: "center", marginVertical: 12 }}>
-              {!!qrValue && (
-                <QRCode
-                  value={qrValue}
-                  size={220}
+                {/* Serial Number */}
+                <Text style={styles.label}>Serial Number</Text>
+                <TextInput
+                  value={editSn}
+                  onChangeText={setEditSn}
+                  placeholder="e.g. WDC-E-12345"
+                  style={styles.input}
                 />
-              )}
-              <Text style={{ marginTop: 8, color: "#334e68" }}>{qrValue}</Text>
-            </View>
 
-            <TouchableOpacity
-              style={[styles.btn, { marginTop: 4 }]}
-              onPress={() => setQrVisible(false)}
-            >
-              <Text style={styles.btnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </View>
+                {/* Multiplier */}
+                <Text style={styles.label}>Multiplier</Text>
+                <TextInput
+                  value={editMult}
+                  onChangeText={setEditMult}
+                  keyboardType="numeric"
+                  placeholder="1.00"
+                  style={styles.input}
+                />
+
+                {/* Stall */}
+                <Text style={styles.label}>Stall</Text>
+                <View style={styles.pickerWrap}>
+                  <Picker
+                    selectedValue={editStallId}
+                    onValueChange={(v) => setEditStallId(v)}
+                    style={styles.picker}
+                  >
+                    {stalls.map((s) => (
+                      <Picker.Item
+                        key={s.stall_id}
+                        label={`${s.stall_id} • ${s.stall_sn || ""}`}
+                        value={s.stall_id}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+
+                {/* Status */}
+                <Text style={styles.label}>Status</Text>
+                <View style={styles.pickerWrap}>
+                  <Picker
+                    selectedValue={editStatus}
+                    onValueChange={(v) => setEditStatus(v)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Inactive" value="inactive" />
+                    <Picker.Item label="Active" value="active" />
+                  </Picker>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnGhost]}
+                    onPress={() => setEditVisible(false)}
+                  >
+                    <Text style={[styles.btnText, { color: "#102a43" }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.btn, submitting && { opacity: 0.7 }]}
+                    onPress={onUpdate}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.btnText}>Save changes</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
-/** Small UI bits reused across panels **/
-function Dropdown({
+function Chip({
   label,
-  value,
-  onChange,
-  options,
+  active,
+  onPress,
 }: {
   label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { label: string; value: string }[];
+  active: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={{ marginTop: 8 }}>
-      <Text style={styles.dropdownLabel}>{label}</Text>
-      <View style={styles.pickerWrapper}>
-        <Picker
-          selectedValue={value}
-          onValueChange={(itemValue) => onChange(String(itemValue))}
-          style={styles.picker}
-        >
-          {options.map((opt) => (
-            <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
-          ))}
-        </Picker>
-      </View>
-    </View>
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}
+    >
+      <Text
+        style={[
+          styles.chipText,
+          active ? styles.chipTextActive : styles.chipTextIdle,
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
-/** Styles – mirrors your admin panel look **/
 const styles = StyleSheet.create({
+  container: {
+    flexGrow: 1,
+    padding: 16,
+    gap: 16,
+    backgroundColor: "#f5f7fb",
+  },
+  center: { alignItems: "center", justifyContent: "center" },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 16,
-    ...Platform.select({
-      web: { boxShadow: "0 10px 30px rgba(0,0,0,0.15)" as any },
-      default: { elevation: 3 },
-    }),
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 2,
   },
-  cardTitle: { fontSize: 18, fontWeight: "700", color: "#102a43", marginBottom: 12 },
-
-  search: {
+  cardTitle: { fontSize: 18, fontWeight: "700", marginBottom: 10 },
+  label: { fontSize: 12, color: "#374151", marginTop: 10, marginBottom: 6 },
+  input: {
+    height: 48,
     borderWidth: 1,
-    borderColor: "#d9e2ec",
-    backgroundColor: "#fff",
+    borderColor: "#d1d5db",
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  loader: { paddingVertical: 20, alignItems: "center" },
-  empty: { textAlign: "center", color: "#627d98", paddingVertical: 16 },
-
-  listRow: {
-    borderWidth: 1,
-    borderColor: "#edf2f7",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
     backgroundColor: "#fff",
-    ...Platform.select({
-      web: { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" as any },
-      default: { elevation: 1 },
-    }),
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
   },
-  rowTitle: { fontWeight: "700", color: "#102a43" },
-  rowSub: { color: "#627d98" },
+  pickerWrap: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  picker: { height: 48, width: "100%" },
+  btn: {
+    marginTop: 14,
+    backgroundColor: "#1f4bd8",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  btnGhost: { backgroundColor: "#e6efff" },
+  btnText: { color: "#fff", fontWeight: "700" },
 
   link: {
     paddingVertical: 8,
     paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    alignSelf: "center",
+    backgroundColor: "#fff",
   },
-  linkText: { color: "#1f4bd8", fontWeight: "700" },
+  linkText: { color: "#102a43", fontWeight: "700" },
 
-  /* Buttons */
-  btn: {
-    marginTop: 12,
-    backgroundColor: "#1f4bd8",
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipActive: { backgroundColor: "#2f6fed", borderColor: "#2f6fed" },
+  chipIdle: { backgroundColor: "#fff", borderColor: "#bcccdc" },
+  chipText: { fontSize: 12, fontWeight: "700" },
+  chipTextActive: { color: "#fff" },
+  chipTextIdle: { color: "#334e68" },
+
+  row: {
     paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e7eb",
+    flexDirection: "row",
+    gap: 12,
   },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { color: "#fff", fontWeight: "700" },
+  rowTitle: { fontSize: 16, fontWeight: "700" },
+  rowSub: { color: "#6b7280", marginTop: 2 },
 
-  /* Modals */
-  modalWrap: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
-    paddingHorizontal: 16,
-  },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 480,
+    justifyContent: "center",
     padding: 16,
   },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: "#102a43", marginBottom: 12 },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 12 },
-
-  /* QR card */
   qrCard: {
+    width: 340,
     backgroundColor: "#fff",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 360,
-    padding: 16,
-    ...Platform.select({
-      web: { boxShadow: "0 10px 30px rgba(0,0,0,0.15)" as any },
-      default: { elevation: 3 },
-    }),
-  },
-
-  /* Pickers */
-  dropdownLabel: { color: "#334e68", marginBottom: 6, marginTop: 6, fontWeight: "600" },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderColor: "#d9e2ec",
-    borderRadius: 10,
+    borderRadius: 14,
     overflow: "hidden",
+    paddingVertical: 16,
+  },
+  qrTitle: { fontSize: 18, fontWeight: "800", textAlign: "center" },
+  qrSub: { fontSize: 12, color: "#6b7280", textAlign: "center", marginTop: 2 },
+  qrWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+  },
+  closeBtn: {
+    backgroundColor: "#111827",
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  closeText: { color: "#fff", fontWeight: "700" },
+
+  editCard: {
+    width: "100%",
+    maxWidth: 420,
     backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingVertical: 16,
   },
-  picker: { height: 50 },
 
-  /* Variants */
-  btnGhost: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
+  pill: {
+    backgroundColor: "#EEF2FF",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
   },
-  rowWrap: {
-  flexDirection: "row",
-  gap: 12,
-  alignItems: "center",
-  flexWrap: "wrap",
-},
-
-input: {
-  borderWidth: 1,
-  borderColor: "#d9e2ec",
-  borderRadius: 10,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  backgroundColor: "#fff",
-  color: "#102a43",
-  marginTop: 6,
-  minWidth: 160,
-},
+  pillTextEdit: {
+    fontWeight: "700",
+    color: "#1f4bd8",
+  },
+  pillTextDelete: {
+    fontWeight: "700",
+    color: "#ef4444",
+  },
 });

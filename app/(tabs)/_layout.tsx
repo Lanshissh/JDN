@@ -64,7 +64,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: "History",
+          title: "Billing",
           tabBarIcon: ({ color }: { color: string }) => (
             <TabBarIcon name="time-outline" color={color} />
           ),

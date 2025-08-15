@@ -181,7 +181,7 @@ export default function HistoryScreen() {
       .map((r) => toNum(r.change_rate))
       .filter((v): v is number => v !== null);
 
-    const bills = computedRows
+    const bill_latest_total = computedRows
       .map((r) => toNum(r.bill_latest_total) ?? 0)
       .reduce((a, b) => a + b, 0);
 
@@ -196,7 +196,7 @@ export default function HistoryScreen() {
       meters: meterIds.length,
       fetched: computedRows.length,
       avgChange,
-      totalLatestBill: bills,
+      totalLatestBill: bill_latest_total,
       up,
       down,
     };

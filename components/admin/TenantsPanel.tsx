@@ -21,8 +21,8 @@ type Tenant = {
   tenant_sn: string;
   tenant_name: string;
   building_id: string;
-  bill_start: string;      // YYYY-MM-DD
-  last_updated: string;    // ISO
+  bill_start: string; // YYYY-MM-DD
+  last_updated: string; // ISO
   updated_by: string;
 };
 
@@ -31,11 +31,22 @@ type Building = {
   building_name: string;
 };
 
+/** Natural compare helper (so ID 2 < 10) */
+const cmp = (a: string | number, b: string | number) =>
+  String(a ?? "").localeCompare(String(b ?? ""), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+/** Pick a sortable date (prefer last_updated, fallback to bill_start) */
+const dateOf = (t: Tenant) =>
+  Date.parse(t.last_updated || t.bill_start || "") || 0;
+
 /** Panel */
 export default function TenantsPanel({ token }: { token: string | null }) {
   const authHeader = useMemo(
     () => ({ Authorization: `Bearer ${token ?? ""}` }),
-    [token]
+    [token],
   );
   const api = useMemo(
     () =>
@@ -44,14 +55,20 @@ export default function TenantsPanel({ token }: { token: string | null }) {
         headers: authHeader,
         timeout: 15000,
       }),
-    [authHeader]
+    [authHeader],
   );
+
+  const [buildingFilter, setBuildingFilter] = useState<string>("");
 
   const [busy, setBusy] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [query, setQuery] = useState("");
+
+  // sort mode chips
+  type SortMode = "newest" | "oldest" | "idAsc" | "idDesc";
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
 
   // Create form
   const [sn, setSn] = useState("");
@@ -86,9 +103,9 @@ export default function TenantsPanel({ token }: { token: string | null }) {
       ]);
       setTenants(tRes.data);
       setBuildings(bRes.data);
-      if (!buildingId && bRes.data?.length) setBuildingId(bRes.data[0].building_id);
+      if (!buildingId && bRes.data?.length)
+        setBuildingId(bRes.data[0].building_id);
     } catch (err: any) {
-      // Employees without visible tenants will get 403 per API; show message instead of an error spam
       const msg =
         err?.response?.data?.error ||
         err?.response?.data?.message ||
@@ -100,18 +117,44 @@ export default function TenantsPanel({ token }: { token: string | null }) {
     }
   };
 
+  /** Filter then search */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tenants;
-    return tenants.filter(
+    let list = tenants;
+
+    // 1) building filter muna
+    if (buildingFilter) {
+      list = list.filter((t) => t.building_id === buildingFilter);
+    }
+
+    // 2) saka mag-text search
+    if (!q) return list;
+    return list.filter(
       (t) =>
         t.tenant_id.toLowerCase().includes(q) ||
         t.tenant_sn.toLowerCase().includes(q) ||
         t.tenant_name.toLowerCase().includes(q) ||
         t.building_id.toLowerCase().includes(q) ||
-        t.bill_start.toLowerCase().includes(q)
+        t.bill_start.toLowerCase().includes(q),
     );
-  }, [tenants, query]);
+  }, [tenants, query, buildingFilter]);
+
+  /** Sort (chips) */
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    switch (sortMode) {
+      case "newest":
+        return arr.sort((a, b) => dateOf(b) - dateOf(a));
+      case "oldest":
+        return arr.sort((a, b) => dateOf(a) - dateOf(b));
+      case "idAsc":
+        return arr.sort((a, b) => cmp(a.tenant_id, b.tenant_id));
+      case "idDesc":
+        return arr.sort((a, b) => cmp(b.tenant_id, a.tenant_id));
+      default:
+        return arr;
+    }
+  }, [filtered, sortMode]);
 
   /** Create */
   const onCreate = async () => {
@@ -176,16 +219,24 @@ export default function TenantsPanel({ token }: { token: string | null }) {
     Platform.OS === "web"
       ? Promise.resolve(
           // eslint-disable-next-line no-alert
-          window.confirm(`Delete tenant ${t.tenant_name} (${t.tenant_id})?`)
+          window.confirm(`Delete tenant ${t.tenant_name} (${t.tenant_id})?`),
         )
       : new Promise((resolve) => {
           Alert.alert(
             "Delete tenant",
             `Are you sure you want to delete ${t.tenant_name}?`,
             [
-              { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-              { text: "Delete", style: "destructive", onPress: () => resolve(true) },
-            ]
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => resolve(false),
+              },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => resolve(true),
+              },
+            ],
           );
         });
 
@@ -257,6 +308,30 @@ export default function TenantsPanel({ token }: { token: string | null }) {
         </TouchableOpacity>
       </View>
 
+      {/* Filters */}
+      <View style={styles.rowWrap}>
+        <Dropdown
+          label="Filter by Building"
+          value={buildingFilter}
+          onChange={setBuildingFilter}
+          options={[
+            { label: "All Buildings", value: "" },
+            ...buildings.map((b) => ({
+              label: `${b.building_name} (${b.building_id})`,
+              value: b.building_id,
+            })),
+          ]}
+        />
+        {!!buildingFilter && (
+          <TouchableOpacity
+            style={[styles.link, { height: 50, justifyContent: "center" }]}
+            onPress={() => setBuildingFilter("")}
+          >
+            <Text style={styles.linkText}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Manage Tenants */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Manage Tenants</Text>
@@ -267,15 +342,41 @@ export default function TenantsPanel({ token }: { token: string | null }) {
           onChangeText={setQuery}
         />
 
+        {/* Sort chips */}
+        <View style={styles.chipsRow}>
+          <Chip
+            label="Newest"
+            active={sortMode === "newest"}
+            onPress={() => setSortMode("newest")}
+          />
+          <Chip
+            label="Oldest"
+            active={sortMode === "oldest"}
+            onPress={() => setSortMode("oldest")}
+          />
+          <Chip
+            label="ID ↑"
+            active={sortMode === "idAsc"}
+            onPress={() => setSortMode("idAsc")}
+          />
+          <Chip
+            label="ID ↓"
+            active={sortMode === "idDesc"}
+            onPress={() => setSortMode("idDesc")}
+          />
+        </View>
+
         {busy ? (
           <View style={styles.loader}>
             <ActivityIndicator />
           </View>
         ) : (
           <FlatList
-            data={filtered}
+            data={sorted}
             keyExtractor={(item) => item.tenant_id}
-            ListEmptyComponent={<Text style={styles.empty}>No tenants found.</Text>}
+            ListEmptyComponent={
+              <Text style={styles.empty}>No tenants found.</Text>
+            }
             renderItem={({ item }) => (
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
@@ -287,14 +388,19 @@ export default function TenantsPanel({ token }: { token: string | null }) {
                     Bill start: {item.bill_start}
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.link} onPress={() => openEdit(item)}>
+                <TouchableOpacity
+                  style={styles.link}
+                  onPress={() => openEdit(item)}
+                >
                   <Text style={styles.linkText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.link, { marginLeft: 8 }]}
                   onPress={() => onDelete(item)}
                 >
-                  <Text style={[styles.linkText, { color: "#e53935" }]}>Delete</Text>
+                  <Text style={[styles.linkText, { color: "#e53935" }]}>
+                    Delete
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -306,7 +412,7 @@ export default function TenantsPanel({ token }: { token: string | null }) {
       <Modal visible={editVisible} animationType="slide" transparent>
         <View style={styles.modalWrap}>
           <View style={styles.modalCard}>
-<Text style={styles.modalTitle}>Edit {editRow?.tenant_id}</Text>
+            <Text style={styles.modalTitle}>Edit {editRow?.tenant_id}</Text>
 
             <LabeledInput
               label="Tenant SN"
@@ -342,7 +448,9 @@ export default function TenantsPanel({ token }: { token: string | null }) {
                 style={[styles.btn, styles.btnGhost]}
                 onPress={() => setEditVisible(false)}
               >
-                <Text style={[styles.btnText, { color: "#102a43" }]}>Cancel</Text>
+                <Text style={[styles.btnText, { color: "#102a43" }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btn}
@@ -360,6 +468,28 @@ export default function TenantsPanel({ token }: { token: string | null }) {
         </View>
       </Modal>
     </View>
+  );
+}
+
+/** Tiny chip component */
+function Chip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active?: boolean;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.chip, active && styles.chipActive]}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -397,7 +527,9 @@ function Dropdown({
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
-function pad(n: number) { return n < 10 ? `0${n}` : String(n); }
+function pad(n: number) {
+  return n < 10 ? `0${n}` : String(n);
+}
 function parseYMD(ymd: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || "");
   if (!m) {
@@ -406,7 +538,9 @@ function parseYMD(ymd: string) {
   }
   return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
 }
-function daysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate(); }
+function daysInMonth(y: number, m: number) {
+  return new Date(y, m, 0).getDate();
+}
 
 function DatePickerField({
   label,
@@ -467,7 +601,6 @@ function LabeledInput({
   );
 }
 
-
 function DatePickerModal({
   visible,
   initialDate,
@@ -498,10 +631,18 @@ function DatePickerModal({
   }, []);
 
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
-  const days = useMemo(() => Array.from({ length: daysInMonth(y, m) }, (_, i) => i + 1), [y, m]);
+  const days = useMemo(
+    () => Array.from({ length: daysInMonth(y, m) }, (_, i) => i + 1),
+    [y, m],
+  );
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={styles.modalWrap}>
         <View style={styles.dateModalCard}>
           <Text style={styles.modalTitle}>Select date</Text>
@@ -509,31 +650,52 @@ function DatePickerModal({
             <View style={styles.datePickerCol}>
               <Text style={styles.dropdownLabel}>Year</Text>
               <View style={styles.pickerWrapper}>
-                <Picker selectedValue={y} onValueChange={(val) => setY(Number(val))} style={styles.picker}>
-                  {years.map((yy) => <Picker.Item key={yy} label={String(yy)} value={yy} />)}
+                <Picker
+                  selectedValue={y}
+                  onValueChange={(val) => setY(Number(val))}
+                  style={styles.picker}
+                >
+                  {years.map((yy) => (
+                    <Picker.Item key={yy} label={String(yy)} value={yy} />
+                  ))}
                 </Picker>
               </View>
             </View>
             <View style={styles.datePickerCol}>
               <Text style={styles.dropdownLabel}>Month</Text>
               <View style={styles.pickerWrapper}>
-                <Picker selectedValue={m} onValueChange={(val) => setM(Number(val))} style={styles.picker}>
-                  {months.map((mm) => <Picker.Item key={mm} label={pad(mm)} value={mm} />)}
+                <Picker
+                  selectedValue={m}
+                  onValueChange={(val) => setM(Number(val))}
+                  style={styles.picker}
+                >
+                  {months.map((mm) => (
+                    <Picker.Item key={mm} label={pad(mm)} value={mm} />
+                  ))}
                 </Picker>
               </View>
             </View>
             <View style={styles.datePickerCol}>
               <Text style={styles.dropdownLabel}>Day</Text>
               <View style={styles.pickerWrapper}>
-                <Picker selectedValue={d} onValueChange={(val) => setD(Number(val))} style={styles.picker}>
-                  {days.map((dd) => <Picker.Item key={dd} label={pad(dd)} value={dd} />)}
+                <Picker
+                  selectedValue={d}
+                  onValueChange={(val) => setD(Number(val))}
+                  style={styles.picker}
+                >
+                  {days.map((dd) => (
+                    <Picker.Item key={dd} label={pad(dd)} value={dd} />
+                  ))}
                 </Picker>
               </View>
             </View>
           </View>
 
           <View style={styles.modalActions}>
-            <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={onClose}>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={onClose}
+            >
               <Text style={[styles.btnText, { color: "#102a43" }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -561,75 +723,147 @@ const styles = StyleSheet.create({
       default: { elevation: 3 },
     }),
   },
-  cardTitle: { fontSize: 18, fontWeight: "700", color: "#102a43", marginBottom: 12 },
-  rowWrap: { flexDirection: "row", gap: 12, flexWrap: "wrap", alignItems: "center" },
-input: {
-  borderWidth: 1,
-  borderColor: "#d9e2ec",
-  borderRadius: 10,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  backgroundColor: "#fff",
-  color: "#102a43",
-  marginTop: 6,
-  minHeight: 50,       // ← add this
-},
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#102a43",
+    marginBottom: 12,
+  },
+  rowWrap: {
+    flexDirection: "row",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#d9e2ec",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    color: "#102a43",
+    marginTop: 6,
+    minHeight: 50,
+  },
 
   dateButton: { justifyContent: "center" },
   dateButtonText: { color: "#102a43" },
 
   btn: {
-    marginTop: 12, backgroundColor: "#1f4bd8",
-    paddingVertical: 12, borderRadius: 12, alignItems: "center",
+    marginTop: 12,
+    backgroundColor: "#1f4bd8",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
   },
   btnDisabled: { opacity: 0.7 },
   btnGhost: { backgroundColor: "#e6efff" },
   btnText: { color: "#fff", fontWeight: "700" },
 
   search: {
-    borderWidth: 1, borderColor: "#d9e2ec", backgroundColor: "#fff",
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#d9e2ec",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
   },
+
+  chipsRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d9e2ec",
+    backgroundColor: "#fff",
+  },
+  chipActive: {
+    backgroundColor: "#1f4bd8",
+    borderColor: "#1f4bd8",
+  },
+  chipText: { color: "#102a43", fontWeight: "700" },
+  chipTextActive: { color: "#fff" },
+
   loader: { paddingVertical: 20, alignItems: "center" },
   empty: { textAlign: "center", color: "#627d98", paddingVertical: 16 },
 
   row: {
-    borderWidth: 1, borderColor: "#edf2f7", backgroundColor: "#fdfefe",
-    borderRadius: 12, padding: 12, marginBottom: 10,
-    flexDirection: "row", alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#edf2f7",
+    backgroundColor: "#fdfefe",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
   },
   rowTitle: { fontWeight: "700", color: "#102a43" },
   rowSub: { color: "#627d98", marginTop: 2, fontSize: 12 },
-  link: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: "#eef2ff" },
+  link: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: "#eef2ff",
+  },
   linkText: { color: "#1f4bd8", fontWeight: "700" },
 
   modalWrap: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center",
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
   },
   modalCard: {
-    width: "100%", maxWidth: 560, backgroundColor: "#fff", borderRadius: 20, padding: 16,
+    width: "100%",
+    maxWidth: 560,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
     ...Platform.select({
       web: { boxShadow: "0 20px 60px rgba(0,0,0,0.35)" as any },
       default: { elevation: 6 },
     }),
   },
-  modalTitle: { fontWeight: "800", fontSize: 18, color: "#102a43", marginBottom: 10 },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 12 },
+  modalTitle: {
+    fontWeight: "800",
+    fontSize: 18,
+    color: "#102a43",
+    marginBottom: 10,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 12,
+  },
 
-  dropdownLabel: { color: "#334e68ff", fontWeight: "600", marginBottom: 6, marginTop: 6 },
+  dropdownLabel: {
+    color: "#334e68ff",
+    fontWeight: "600",
+    marginBottom: 6,
+    marginTop: 6,
+  },
   pickerWrapper: {
     borderWidth: 1,
     borderColor: "#d9e2ec",
-   borderRadius: 10,
+    borderRadius: 10,
     backgroundColor: "#fff",
-    height: 50,                 
+    height: 50,
     justifyContent: "center",
     paddingHorizontal: 4,
   },
   picker: {
     width: "100%",
-    height: 50,                 
+    height: 50,
   },
   dateModalCard: {
     backgroundColor: "#fff",
@@ -640,5 +874,4 @@ input: {
   },
   datePickersRow: { flexDirection: "row", gap: 12 },
   datePickerCol: { flex: 1 },
-  
 });

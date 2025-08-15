@@ -353,7 +353,6 @@ function Dropdown({
 }
 
 const styles = StyleSheet.create({
-  // same style structure as AccountsPanel.tsx
   grid: { gap: 16 },
   card: {
     backgroundColor: "#fff",

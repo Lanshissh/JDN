@@ -1,10 +1,20 @@
+// app/(tabs)/scanner.tsx
 import {
   OnSuccessfulScanProps,
   QRCodeScanner,
 } from "@masumdev/rn-qrcode-scanner";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Alert, Image, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  SafeAreaView,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 export default function ScannerScreen() {
@@ -40,16 +50,36 @@ export default function ScannerScreen() {
       <QRCodeScanner
         key={scannerKey}
         core={{ onSuccessfulScan: handleScan }}
+        scanning={{ cooldownDuration: 1200 }}
+        uiControls={{
+          showControls: true,
+          showTorchButton: true, // <-- built-in flash toggle
+          showStatus: true,
+        }}
         permissionScreen={{}}
       />
-      <View style={styles.logoContainer}>
+
+      {/* Top bar with Close (X) */}
+      <SafeAreaView pointerEvents="box-none" style={styles.topBar}>
+        <TouchableOpacity
+          onPress={() => router.replace("/(tabs)/history")}
+          style={styles.iconBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="close" size={26} color="#000000ff" />
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {/* Make overlays non-interactive so touches reach the torch button */}
+      <View pointerEvents="none" style={styles.logoContainer}>
         <Image
           source={require("../../assets/images/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
       </View>
-      <View style={styles.overlay}>
+
+      <View pointerEvents="none" style={styles.overlay}>
         <Text style={styles.overlayText}>Point your camera at a QR Code</Text>
       </View>
     </View>
@@ -58,6 +88,26 @@ export default function ScannerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
+
+  topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    zIndex: 20,
+  },
+  iconBtn: {
+    marginLeft: 8.7,
+    marginTop:53.1,
+    backgroundColor: "rgba(255, 255, 255, 0.35)",
+    borderRadius: 999,
+    padding: 8,
+  },
+
   logoContainer: {
     position: "absolute",
     top: 40,
@@ -67,6 +117,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   logo: { width: 100, height: 100, opacity: 0.9 },
+
   overlay: {
     position: "absolute",
     bottom: 60,

@@ -927,7 +927,11 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontWeight: "700", color: "#102a43" },
   rowSub: { color: "#627d98" },
-  link: { paddingVertical: 8, paddingHorizontal: 10 },
+  link: {     
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: "#eef2ff"},
   linkText: { color: "#1f4bd8", fontWeight: "700" },
   modalWrap: {
     flex: 1,
@@ -1057,7 +1061,7 @@ const styles = StyleSheet.create({
   datePickersRow: { flexDirection: "row", gap: 12 },
   datePickerCol: { flex: 1 },
   scanBtn: {
-    marginTop: 14,
+    marginTop: 35,
     backgroundColor: "#0ea5e9",
     borderRadius: 10,
     paddingVertical: 12,

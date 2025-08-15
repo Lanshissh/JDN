@@ -354,10 +354,20 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#f9f9f9" },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  logo: { width: 64, height: 64, marginRight: 10 },
-  title: { fontSize: 24, fontWeight: "800", color: "#102a43" },
-
+header: {
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 12,
+},
+  logo: {
+  height: 30, 
+  width: 110, 
+  marginTop: 25,
+},
+  title: {
+    textAlign: "center",
+},
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard: {
     flexGrow: 1,

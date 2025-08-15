@@ -47,26 +47,34 @@ export default function TabLayout() {
         name="admin"
         options={{
           title: "Admin",
-          tabBarIcon: ({ color }: { color: string }) => (
-            <TabBarIcon name="person-circle-outline" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name={focused ? "person-circle" : "person-circle-outline"}
+              color={color}
+            />
           ),
         }}
       />
+
       <Tabs.Screen
         name="scanner"
         options={{
           title: "Scanner",
-          tabBarIcon: ({ color }: { color: string }) => (
-            <TabBarIcon name="scan-outline" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name={focused ? "scan" : "scan-outline"}
+              color={color}
+            />
           ),
         }}
       />
+
       <Tabs.Screen
         name="history"
         options={{
           title: "Billing",
-          tabBarIcon: ({ color }: { color: string }) => (
-            <TabBarIcon name="time-outline" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? "card" : "card-outline"} color={color} />
           ),
         }}
       />
